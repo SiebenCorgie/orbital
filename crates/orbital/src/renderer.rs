@@ -1,9 +1,11 @@
-use std::{sync::Arc, f32::consts::PI};
+use std::{sync::Arc, f32::consts::PI, time::Instant};
 
-use nih_plug_egui::egui::{Painter, Color32, Stroke, Vec2, Widget, Sense, Pos2, Shape, epaint::CircleShape, color_picker};
+use nih_plug_egui::egui::{Painter, Color32, Stroke, Vec2, Widget, Sense, Pos2, Shape, epaint::CircleShape, Key, PointerButton};
 
 use crate::OrbitalParams;
 
+
+const TWOPI: f32 = 2.0 * PI;
 
 fn rotate_vec2(src: Vec2, angle: f32) -> Vec2{
     let cos = angle.cos();
@@ -113,6 +115,11 @@ struct Orbital{
     //offest on orbit. Translates to phase shift on osc. In radiant
     offset: f32,
 
+    //current phase (in radiant) of this orbital.
+    phase: f32,
+    //speed of this orbital in units/sec.
+    speed: f32,
+
     orbit_width: f32,
     planet_highlight: bool,
 
@@ -143,6 +150,10 @@ impl Orbital{
             radius,
             orbit_width: Self::ORBIT_LINE_WIDTH,
             planet_highlight: false,
+
+            phase: 0.0,
+            speed: 1.0,
+
             offset,
             obj: ObjTy::Planet,
             interaction: Interaction::None,
@@ -181,7 +192,7 @@ impl Orbital{
     }
 
     fn obj_pos(&self) -> Pos2{
-        self.center + rotate_vec2(Self::ZERO_SHIFT, self.offset) * self.radius
+        self.center + rotate_vec2(Self::ZERO_SHIFT, (self.offset + self.phase) % TWOPI) * self.radius
     }
 
 
@@ -194,7 +205,7 @@ impl Orbital{
             let at_prime = look_at - self.center;
             let angle = (Self::ZERO_SHIFT.dot(at_prime) / (at_prime.length() * Self::ZERO_SHIFT.length())).acos();
             if look_at.x < self.center.x{
-                2.0*PI - angle
+                TWOPI - angle
             }else{
                 angle
             }
@@ -203,8 +214,19 @@ impl Orbital{
         self.offset = angle;
     }
 
+    fn update(&mut self, delta: f32) {
+        self.phase = (self.phase + (self.speed * delta)) % TWOPI;
+        let new_loc = self.obj_pos();
+        for c in &mut self.children{
+            //forward update center...
+            c.center = new_loc;
+            //..then call inner update
+            c.update(delta);
+        }
+    }
+
     fn on_drag_start(&mut self, at: Pos2) -> bool{
-        let used = match (self.on_orbit_handle(at), self.on_planet(at)){
+        let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at)){
             (false, true) => {
                 //drag start on planet, start dragging out a child
                 self.interaction = Interaction::DragNewChild { hash: 0, obj: self.obj.lower(), at };
@@ -212,6 +234,7 @@ impl Orbital{
             },
             (true, true) => {
                 self.interaction = Interaction::DragPlanet { at };
+                self.phase = 0.0;
                 true
             }
             (true, false) => {
@@ -272,6 +295,15 @@ impl Orbital{
         }
     }
 
+    fn on_scroll(&mut self, delta: f32, at: Pos2){
+        if self.is_on_orbit_handle(at){
+            self.speed = (self.speed + delta).clamp(0.001, 100.0);
+        }
+        for c in &mut self.children{
+            c.on_scroll(delta, at);
+        }
+    }
+
     fn update_center(&mut self, new_center: Pos2){
         self.center = new_center;
         let new_child_center = self.obj_pos();
@@ -307,12 +339,12 @@ impl Orbital{
 
     }
 
-    fn on_orbit_handle(&self, loc: Pos2) -> bool{
+    fn is_on_orbit_handle(&self, loc: Pos2) -> bool{
         let handle_rad = (loc-self.center).length();
         handle_rad > (self.radius - Self::HANDLE_WIDTH) && handle_rad < (self.radius + Self::HANDLE_WIDTH)
     }
 
-    fn on_planet(&self, loc: Pos2) -> bool{
+    fn is_on_planet(&self, loc: Pos2) -> bool{
         //TODO currently calculating "left side" on
         let pos = self.obj_pos();
 
@@ -320,13 +352,14 @@ impl Orbital{
         rad < (Self::OBJSIZE + Self::HANDLE_WIDTH)
     }
 
-    ///Notifies that cursor is hovering
-    fn on_hover(&mut self, at: Pos2){
+    ///Notifies that cursor is hovering, returns true if hovering over anything interactable.
+    fn on_hover(&mut self, at: Pos2) -> bool{
 
+        let mut is_interactable = false;
         //only add hover effect if not dragging already
         if self.interaction.is_none(){
             //if hovering over our orbit, thicken line
-            match (self.on_orbit_handle(at), self.on_planet(at)){
+            match (self.is_on_orbit_handle(at), self.is_on_planet(at)){
                 (false, false) => {
                     //reset orbit render width
                     self.orbit_width = Self::ORBIT_LINE_WIDTH;
@@ -335,6 +368,7 @@ impl Orbital{
                 (true, true) => {
                     self.planet_highlight = true;
                     self.orbit_width = Self::ORBIT_LINE_FAT;
+                    is_interactable = true;
                 }
                 (true, false) => {
                     //only on orbit, widen orbit line
@@ -345,15 +379,15 @@ impl Orbital{
                     //on planet, preffer over orbit.
                     self.orbit_width = Self::ORBIT_LINE_WIDTH;
                     self.planet_highlight = true;
+                    is_interactable = true;
                 }
             }
         }
 
-
-
         for c in &mut self.children{
-            c.on_hover(at);
+            is_interactable |= c.on_hover(at);
         }
+        is_interactable
     }
 }
 
@@ -376,6 +410,7 @@ impl SolarSystem{
 pub struct Renderer{
     pub params: Arc<OrbitalParams>,
     pub system: SolarSystem,
+    pub last_update: Instant,
 }
 
 impl Widget for &mut Renderer{
@@ -383,14 +418,15 @@ impl Widget for &mut Renderer{
         let rect = ui.clip_rect();
         let (response, painter) = ui.allocate_painter(rect.size(), Sense::click_and_drag());
 
+
+        let mut pausing = ui.input().key_down(Key::Space);
         //update hover if there is any
         if let Some(hp) = response.hover_pos(){
+
             for orb in &mut self.system.orbitals{
-                orb.on_hover(hp);
+                pausing |= orb.on_hover(hp);
             }
         }
-
-
         if let Some(interaction_pos) = ui.input().pointer.interact_pos(){
             //track if any click was taken
             let mut click_taken = false;
@@ -406,7 +442,7 @@ impl Widget for &mut Renderer{
 
             if response.dragged(){
                 for orbital in &mut self.system.orbitals{
-                    orbital.on_drag(interaction_pos);
+                    pausing |= orbital.on_drag(interaction_pos);
                 }
             }
 
@@ -422,9 +458,23 @@ impl Widget for &mut Renderer{
                     self.system.orbitals.push(Orbital::new_primary(pos, rect.center()));
                 }
             }
+
+            let scroll_delta = ui.input().scroll_delta.y / 100.0;
+            if scroll_delta != 0.0{
+                for orbital in &mut self.system.orbitals{
+                    orbital.on_scroll(scroll_delta, interaction_pos);
+                }
+            }
         }
 
-
+        //update inner animation, but only if not pausing
+        let delta = self.last_update.elapsed().as_secs_f32();
+        self.last_update = Instant::now();
+        if !pausing{
+            for orb in &mut self.system.orbitals{
+                orb.update(delta);
+            }
+        }
 
         self.paint(rect.center(), &painter);
 
@@ -436,6 +486,7 @@ impl Renderer{
     pub fn new(params: Arc<OrbitalParams>) -> Self{
         Renderer {
             params,
+            last_update: Instant::now(),
             system: SolarSystem::new()
         }
     }
