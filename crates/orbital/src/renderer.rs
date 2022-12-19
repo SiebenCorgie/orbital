@@ -18,6 +18,7 @@ fn rotate_vec2(src: Vec2, angle: f32) -> Vec2{
 
 #[derive(Clone, Copy)]
 enum ObjTy{
+    Sun,
     Planet,
     Moon,
     Astroid
@@ -26,20 +27,33 @@ enum ObjTy{
 impl ObjTy{
     ///Paints self.
     fn pain(&self, center: Pos2, painter: &Painter){
-        let color = match self {
+        painter.add(Shape::circle_filled(center, self.radius(), self.color()));
+    }
+
+    fn color(&self) -> Color32{
+        match self {
+            ObjTy::Sun => Color32::LIGHT_YELLOW,
             ObjTy::Astroid => Color32::LIGHT_RED,
             ObjTy::Moon => Color32::GRAY,
             ObjTy::Planet => Color32::LIGHT_BLUE,
-        };
-
-        painter.add(Shape::circle_filled(center, 10.0, color));
+        }
     }
 
     fn lower(&self) -> Self{
         match self {
+            ObjTy::Sun => ObjTy::Planet,
             ObjTy::Planet => ObjTy::Moon,
             ObjTy::Moon => ObjTy::Astroid,
             ObjTy::Astroid => ObjTy::Astroid
+        }
+    }
+
+    fn radius(&self) -> f32{
+        match self {
+            ObjTy::Sun => 22.0,
+            ObjTy::Planet => 12.5,
+            ObjTy::Moon => 9.5,
+            ObjTy::Astroid => 7.0
         }
     }
 }
@@ -254,21 +268,26 @@ impl Orbital{
     ///Notifies that cursor is hovering
     fn on_hover(&mut self, at: Pos2){
 
-        //if hovering over our orbit, thicken line
-        match (self.on_orbit_handle(at), self.on_planet(at)){
-            (false, false) => {
-                //reset orbit render width
-                self.orbit_width = Self::ORBIT_LINE_WIDTH
-            },
-            (true, false) => {
-                //only on orbit, widen orbit line
-                self.orbit_width = Self::ORBIT_LINE_FAT;
-            },
-            (_, true) => {
-                //on planet, preffer over orbit.
-                self.orbit_width = Self::ORBIT_LINE_WIDTH;
+        //only add hover effect if not dragging already
+        if self.interaction.is_none(){
+            //if hovering over our orbit, thicken line
+            match (self.on_orbit_handle(at), self.on_planet(at)){
+                (false, false) => {
+                    //reset orbit render width
+                    self.orbit_width = Self::ORBIT_LINE_WIDTH
+                },
+                (true, false) => {
+                    //only on orbit, widen orbit line
+                    self.orbit_width = Self::ORBIT_LINE_FAT;
+                },
+                (_, true) => {
+                    //on planet, preffer over orbit.
+                    self.orbit_width = Self::ORBIT_LINE_WIDTH;
+                }
             }
         }
+
+
 
         for c in &mut self.children{
             c.on_hover(at);
@@ -277,9 +296,6 @@ impl Orbital{
 }
 
 pub struct SolarSystem{
-    ///size of the sun, also marks "dead" area
-    sun_size: f32,
-
     hover_at: Pos2,
 
     orbitals: Vec<Orbital>,
@@ -289,7 +305,6 @@ pub struct SolarSystem{
 impl SolarSystem{
     fn new() -> Self{
         SolarSystem{
-            sun_size: 10.0,
             hover_at: Pos2::ZERO,
             orbitals: Vec::new(),
         }
@@ -366,8 +381,8 @@ impl Renderer{
     pub fn paint(&self, center: Pos2, painter: &Painter){
         painter.add(Shape::Circle(CircleShape {
             center,
-            radius: self.system.sun_size,
-            fill: Color32::LIGHT_YELLOW,
+            radius: ObjTy::Sun.radius(),
+            fill: ObjTy::Sun.color(),
             stroke: Stroke::none()
         }));
 
