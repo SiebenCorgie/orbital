@@ -26,8 +26,12 @@ enum ObjTy{
 
 impl ObjTy{
     ///Paints self.
-    fn pain(&self, center: Pos2, painter: &Painter){
-        painter.add(Shape::circle_filled(center, self.radius(), self.color()));
+    fn pain(&self, center: Pos2, highlight: bool, painter: &Painter){
+        let mut shape = CircleShape{center, radius: self.radius(), stroke: Stroke::none(), fill: self.color()};
+        if highlight{
+            shape.stroke = Stroke::new(Orbital::ORBIT_LINE_FAT, Color32::WHITE);
+        }
+        painter.add(Shape::Circle(shape));
     }
 
     fn color(&self) -> Color32{
@@ -67,8 +71,11 @@ enum Interaction{
         //Location the "drag" event is currently at
         at: Pos2
     },
+    DragPlanet{
+        at: Pos2
+    },
     DragOrbit{
-        new_orbit: f32
+        at: Pos2
     },
     None
 }
@@ -79,9 +86,9 @@ impl Interaction{
             Interaction::DragNewChild { hash, obj, at } => {
                 *at = to;
             },
-            Interaction::DragOrbit { new_orbit } => {
-                let orbit = (parent_center - to).length();
-                *new_orbit = orbit;
+            Interaction::DragPlanet { at } => *at = to,
+            Interaction::DragOrbit { at } => {
+                *at = to
             },
             Interaction::None => {}
         }
@@ -107,6 +114,7 @@ struct Orbital{
     offset: f32,
 
     orbit_width: f32,
+    planet_highlight: bool,
 
     interaction: Interaction,
 
@@ -129,27 +137,22 @@ impl Orbital{
 
         let radius = (at - center).length();
         //find angle in a way that it is placed at this location.
-        let offset = {
-            //we currently do that by shifting origin to center, constructing the "zero shift" vector and the
-            // "to at" vector and getting the angle between those.
-            let at_prime = at - center;
-            let angle = (Self::ZERO_SHIFT.dot(at_prime) / (at_prime.length() * Self::ZERO_SHIFT.length())).acos();
-            if at.x < center.x{
-                2.0*PI - angle
-            }else{
-                angle
-            }
-        };
-        Orbital {
+        let offset = 0.0;
+        let mut new_orb = Orbital {
             center,
             radius,
             orbit_width: Self::ORBIT_LINE_WIDTH,
+            planet_highlight: false,
             offset,
             obj: ObjTy::Planet,
             interaction: Interaction::None,
             hash: 0,
             children: Vec::new()
-        }
+        };
+
+        new_orb.offset_to(at);
+
+        new_orb
     }
 
     fn paint(&self, painter: &Painter){
@@ -174,7 +177,7 @@ impl Orbital{
             tmp.paint(painter);
         }
 
-        self.obj.pain(self.obj_pos(), painter);
+        self.obj.pain(self.obj_pos(), self.planet_highlight, painter);
     }
 
     fn obj_pos(&self) -> Pos2{
@@ -182,17 +185,38 @@ impl Orbital{
     }
 
 
+    ///Offsets self in a way that it is as close as possible to `look_at`.
+    fn offset_to(&mut self, look_at: Pos2){
+
+        let angle = {
+            //we currently do that by shifting origin to center, constructing the "zero shift" vector and the
+            // "to at" vector and getting the angle between those.
+            let at_prime = look_at - self.center;
+            let angle = (Self::ZERO_SHIFT.dot(at_prime) / (at_prime.length() * Self::ZERO_SHIFT.length())).acos();
+            if look_at.x < self.center.x{
+                2.0*PI - angle
+            }else{
+                angle
+            }
+        };
+
+        self.offset = angle;
+    }
+
     fn on_drag_start(&mut self, at: Pos2) -> bool{
         let used = match (self.on_orbit_handle(at), self.on_planet(at)){
-            (_, true) => {
+            (false, true) => {
                 //drag start on planet, start dragging out a child
                 self.interaction = Interaction::DragNewChild { hash: 0, obj: self.obj.lower(), at };
-
+                true
+            },
+            (true, true) => {
+                self.interaction = Interaction::DragPlanet { at };
                 true
             }
             (true, false) => {
                 //dragging orbit, change orbit radius
-                self.interaction = Interaction::DragOrbit { new_orbit: 0.0 };
+                self.interaction = Interaction::DragOrbit { at };
                 true
             },
             _ => {
@@ -216,6 +240,27 @@ impl Orbital{
     fn on_drag(&mut self, drag_to: Pos2) -> bool{
         if !self.interaction.is_none(){
             self.interaction.set_location(self.obj_pos(), drag_to);
+
+            //if we are dragging the orbit, or the planet, update base location.
+            match self.interaction{
+                Interaction::DragOrbit { at } => {
+                    let new_rad = (self.center.to_vec2() - at.to_vec2()).length();
+                    self.radius = new_rad;
+                    let new_center = self.obj_pos();
+                    for c in &mut self.children{
+                        c.update_center(new_center);
+                    }
+                }
+                Interaction::DragPlanet { at } => {
+                    self.offset_to(at);
+                    let new_center = self.obj_pos();
+                    for c in &mut self.children{
+                        c.update_center(new_center);
+                    }
+                },
+                _ => {}
+            }
+
             true
         }else{
             for c in &mut self.children{
@@ -224,6 +269,14 @@ impl Orbital{
                 }
             }
             false
+        }
+    }
+
+    fn update_center(&mut self, new_center: Pos2){
+        self.center = new_center;
+        let new_child_center = self.obj_pos();
+        for c in &mut self.children{
+            c.update_center(new_child_center);
         }
     }
 
@@ -237,10 +290,12 @@ impl Orbital{
                     self.children.push(child);
                     self.interaction = Interaction::None;
                 },
-                Interaction::DragOrbit { new_orbit } => {
-                    self.radius = *new_orbit;
+                Interaction::DragOrbit { at: _ } => {
                     self.interaction = Interaction::None;
                 },
+                Interaction::DragPlanet { at: _ } => {
+                    self.interaction = Interaction::None;
+                }
                 Interaction::None => {}
             }
         }
@@ -262,7 +317,7 @@ impl Orbital{
         let pos = self.obj_pos();
 
         let rad = (loc-pos).length();
-        rad < Self::OBJSIZE
+        rad < (Self::OBJSIZE + Self::HANDLE_WIDTH)
     }
 
     ///Notifies that cursor is hovering
@@ -274,15 +329,22 @@ impl Orbital{
             match (self.on_orbit_handle(at), self.on_planet(at)){
                 (false, false) => {
                     //reset orbit render width
-                    self.orbit_width = Self::ORBIT_LINE_WIDTH
+                    self.orbit_width = Self::ORBIT_LINE_WIDTH;
+                    self.planet_highlight = false;
                 },
+                (true, true) => {
+                    self.planet_highlight = true;
+                    self.orbit_width = Self::ORBIT_LINE_FAT;
+                }
                 (true, false) => {
                     //only on orbit, widen orbit line
                     self.orbit_width = Self::ORBIT_LINE_FAT;
+                    self.planet_highlight = false;
                 },
                 (_, true) => {
                     //on planet, preffer over orbit.
                     self.orbit_width = Self::ORBIT_LINE_WIDTH;
+                    self.planet_highlight = true;
                 }
             }
         }
