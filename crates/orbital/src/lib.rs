@@ -3,7 +3,7 @@ use com::ComMsg;
 use crossbeam::channel::{Sender, Receiver, TryRecvError};
 use nih_plug::{prelude::*, params::persist, util::midi_note_to_freq};
 use nih_plug_egui::{create_egui_editor, egui::{self, Painter}, EguiState};
-use osc::OscillatorBank;
+use osc::{OscillatorBank, ModulationType};
 use renderer::{Renderer, solar_system::SolarSystem};
 use std::sync::{Arc, Mutex};
 
@@ -40,10 +40,8 @@ pub struct OrbitalParams {
     /// restored.
     #[persist = "editor-state"]
     editor_state: Arc<EguiState>,
-
-    #[id = "gain"]
-    pub gain: FloatParam,
-
+    #[persist = "modty"]
+    pub mod_ty: Arc<Mutex<ModulationType>>,
     #[persist = "OscBank"]
     pub bank: Arc<Mutex<OscillatorBank>>,
     #[persist = "SolarSystem"]
@@ -68,19 +66,7 @@ impl Default for OrbitalParams {
             editor_state: EguiState::from_size(640, 480),
 
             // See the main gain example for more details
-            gain: FloatParam::new(
-                "Gain",
-                util::db_to_gain(0.0),
-                FloatRange::Skewed {
-                    min: util::db_to_gain(-30.0),
-                    max: util::db_to_gain(30.0),
-                    factor: FloatRange::gain_skew_factor(-30.0, 30.0),
-                },
-            )
-            .with_smoother(SmoothingStyle::Logarithmic(50.0))
-            .with_unit(" dB")
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            mod_ty: Arc::new(Mutex::new(ModulationType::Absolute)),
             bank: Arc::new(Mutex::new(OscillatorBank::default())),
             solar_system: Arc::new(Mutex::new(SolarSystem::new())),
         }
@@ -117,7 +103,6 @@ impl Plugin for Orbital {
             |_, _| {},
             move |egui_ctx, setter, renderer| {
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
-
                     ui.add(renderer);
                 });
             },
@@ -168,7 +153,6 @@ impl Plugin for Orbital {
         for _try in 0..10{
             match self.com_channel.1.try_recv(){
                 Ok(msg) => {
-                    nih_log!("Got: {:?}", msg);
                     self.bank.on_msg(msg);
                 }
                 Err(e) => {
@@ -180,6 +164,10 @@ impl Plugin for Orbital {
                     }
                 }
             }
+        }
+
+        if let Ok(ty) = self.params.mod_ty.try_lock(){
+            self.bank.mod_ty = ty.clone();
         }
 
         while let Some(ev) = context.next_event(){

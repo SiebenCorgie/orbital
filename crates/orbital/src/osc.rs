@@ -1,18 +1,24 @@
-use nih_plug::{nih_error, prelude::Buffer};
+use nih_plug::{nih_error, prelude::{Buffer, Enum}};
 use serde::{Deserialize, Serialize};
 
-use crate::{com::{ComMsg, OrbitalState}, renderer::orbital::TWOPI};
+use crate::{com::{ComMsg, OrbitalState}, renderer::orbital::{TWOPI, Orbital}};
 
-fn sigmoid(x: f32) -> f32{
+pub fn sigmoid(x: f32) -> f32{
     x / (1.0 + x * x).sqrt()
 }
 
-pub fn hz_to_mel(hz: f32) -> f32{
-    2595.0f32 * 1.0+(hz/700.0).log10()
+pub fn mel_to_freq(mel: f32) -> f32 {
+    700.0 * (10.0f32.powf((mel + 20.0) / 2595.0) - 1.0)
 }
 
-pub fn mel_to_hz(mel: f32) -> f32{
-    700.0 * (10.0f32.powf(mel / 2595.0) - 1.0)
+pub fn freq_to_mel(freq: f32) -> f32 {
+    2595.0 * (1.0 + (freq / 700.0)).log10()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Enum)]
+pub enum ModulationType{
+    Absolute,
+    Relative
 }
 
 ///There are two oscillator types, primary, and modulator. However we also track turned off osc's
@@ -25,24 +31,23 @@ pub enum OscType{
         base_multiplier: f32,
         volume: f32,
     },
-    ///Modulates the Oscilator at the given index in the bank.
+    ///Modulates the Oscillator at the given index in the bank.
     Modulator{
         ///the parent oscillator
         parent_osc_slot: usize,
         ///The modulation range in % of the parents frequency. At 0 no modulation happens, at 1.0 the value is modulated +/- 100%
         ///
-        /// The modulation speed is determined by the own self.speed, the current ammount (weighted by the percentile) is
+        /// The modulation speed is determined by the own self.speed, the current amount (weighted by the percentile) is
         /// calculated by advance function.
         range: f32,
-        ///Modulation frequency in Hz
-        frequency: f32
+        ///Abstract speed of this modulator. Depending on the modulation type this is
+        /// either the relative frequency modulation, or a certain frequency in mel.
+        speed: f32
     },
     Off
 }
 
 impl OscType{
-
-    const MINFREQ: f32 = 0.001;
 
     ///Calculates a step value based on:
     ///
@@ -52,18 +57,36 @@ impl OscType{
     ///
     /// The returned value is in radiant, aka "parts on the oscillators circle"
     #[inline]
-    fn phase_step(&self, d_sec: f32, base_frequency: f32, frequency_multiplier: f32) -> f32{
+    fn phase_step(&self, d_sec: f32, base_frequency: f32, frequency_multiplier: f32, mod_ty: &ModulationType) -> f32{
         match self{
             OscType::Primary { base_multiplier, .. } => {
                 //calculate step by finding "our" base frequency, and weighting that with the percentile. Then advance
                 // via δ
-                let local_base = (base_frequency * base_multiplier).max(Self::MINFREQ);
+                let local_base = (base_frequency * base_multiplier).max(0.0);
                 let final_freq = local_base * frequency_multiplier;
                 d_sec * final_freq * TWOPI
             },
-            OscType::Modulator { parent_osc_slot, range: _, frequency } => {
+            OscType::Modulator { parent_osc_slot: _, range: _, speed } => {
+                //depending on the modulation type, either scale by base frequency, or dont't
+                match mod_ty {
                 //in this case, its easy, weigh with percentile and move base on our frequency
-                d_sec * frequency * frequency_multiplier * TWOPI
+                    ModulationType::Absolute => d_sec * mel_to_freq(speed * Orbital::MEL_MULTIPLIER) * frequency_multiplier * TWOPI,
+                    ModulationType::Relative => {
+
+                        //what we want is to take the base frequency of the tone, and modulate it with the current speed.
+                        // `speed` is is -inf..inf. We translate the absolute on mel to mel, depending on the sign either
+                        // add or subtract from the base frequency (in mel) and translate that back into hz.
+                        //
+                        // Then we add the modulation multiplier as well.
+
+
+
+                        let modded_base = mel_to_freq((freq_to_mel(base_frequency) * *speed).max(0.0));
+
+                        d_sec * modded_base * frequency_multiplier * TWOPI
+                    }
+                }
+
             },
             OscType::Off => {0.0}
         }
@@ -71,6 +94,14 @@ impl OscType{
 
     fn is_primary(&self) -> bool{
         if let OscType::Primary {..} = self{
+            true
+        }else{
+            false
+        }
+    }
+
+    fn is_off(&self) -> bool{
+        if let OscType::Off = self{
             true
         }else{
             false
@@ -135,7 +166,7 @@ pub struct OscillatorBank{
     ///Stores *all* oscillators. The children are declared in form of indices within the osc structs.
     oscillators: Vec<Oscillator>,
     pub speed_multiplier: f32,
-
+    pub mod_ty: ModulationType,
     phase: f32,
 }
 
@@ -145,6 +176,7 @@ impl Default for OscillatorBank{
         OscillatorBank {
             oscillators: vec![Oscillator::default(); Self::DEFAULT_BANK_SIZE],
             speed_multiplier: 0.0,
+            mod_ty: ModulationType::Absolute,
             phase: 0.0,
         }
     }
@@ -170,7 +202,7 @@ impl OscillatorBank{
                         osc.ty = ty;
                         osc.offset = offset;
                     }else{
-                        nih_error!("outside oscillator bank!");
+                        nih_error!("outside oscillator bank, allocating!");
                     }
 
                 }
@@ -190,10 +222,13 @@ impl OscillatorBank{
         let mut div = 0;
         //atm. step all
         for osc_idx in 0..self.oscillators.len(){
+            if self.oscillators[osc_idx].ty.is_off(){
+                continue;
+            }
             //advance osc state
             {
                 let osc = &mut self.oscillators[osc_idx];
-                let osc_adv = osc.ty.phase_step(sample_delta, base_frequency, osc.freq_multiplier());
+                let osc_adv = osc.ty.phase_step(sample_delta, base_frequency, osc.freq_multiplier(), &self.mod_ty);
                 osc.phase = (osc.phase + osc_adv) % TWOPI;
                 //reset modulator for next iteration, since we just used the old value
                 osc.mod_counter = 0;
@@ -206,7 +241,6 @@ impl OscillatorBank{
                     },
                     _ => {}
                 }
-
             };
         }
 
@@ -214,6 +248,9 @@ impl OscillatorBank{
         // NOTE: Can't do that in the first loop, since any osc might only be partially updated at that point.
         // TODO: maybe sort bank in a way that we can do that at once?
         for i in 0..self.oscillators.len(){
+            if self.oscillators[i].ty.is_off(){
+                continue;
+            }
             let update = if let OscType::Modulator { parent_osc_slot, range, .. } = &self.oscillators[i].ty {
                 //NOTE: we got a phase for the mod oscillator. However the cos is (-1 .. 1). So we weight by range into (-range .. range).
                 //      Next we want to only modulate the range around (100% - range .. 100% + range), so we add 1

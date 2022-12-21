@@ -1,11 +1,12 @@
 use std::time::Instant;
 
 use crossbeam::channel::Sender;
-use egui::{Painter, Response, epaint::CircleShape, Shape, Stroke, InputState, Key};
+use egui::{Painter, Response, epaint::CircleShape, Shape, Stroke, InputState, Key, PointerButton};
+use nih_plug::nih_log;
 use nih_plug_egui::egui::Pos2;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::com::{ComMsg, SolarState};
+use crate::{com::{ComMsg, SolarState}, osc::OscillatorBank};
 
 use super::orbital::{Orbital, ObjTy};
 
@@ -15,8 +16,7 @@ pub struct SolarSystem{
     #[serde(default = "Instant::now", skip)]
     last_update: Instant,
     orbitals: Vec<Orbital>,
-    free_slots: Vec<usize>,
-    next_slot: usize,
+    pub paused: bool,
 }
 
 impl SolarSystem{
@@ -25,8 +25,7 @@ impl SolarSystem{
             last_center: Pos2::ZERO,
             last_update: Instant::now(),
             orbitals: Vec::new(),
-            free_slots: Vec::with_capacity(5), //usually enough
-            next_slot: 0,
+            paused: false,
         }
     }
 
@@ -47,12 +46,11 @@ impl SolarSystem{
 
     ///Handles input for the solar systems painting area.
     pub fn handle_response(&mut self, coms: &mut Sender<ComMsg>, response: &Response, input: &InputState){
-        let mut pausing = input.key_down(Key::Space);
+        self.paused |= input.key_down(Key::Space);
         //update hover if there is any
         if let Some(hp) = response.hover_pos(){
-
             for orb in &mut self.orbitals{
-                pausing |= orb.on_hover(hp);
+                let _pause = orb.on_hover(hp);
             }
         }
         if let Some(interaction_pos) = input.pointer.interact_pos(){
@@ -60,22 +58,18 @@ impl SolarSystem{
             let mut click_taken = false;
 
             if response.drag_started(){
-                let mut slot = Some(self.alloc_slot());
+                let mut slot = self.find_slot();
                 for orbital in &mut self.orbitals{
-                    if orbital.on_drag_start(interaction_pos, &mut slot){
+                    if orbital.on_drag_start(interaction_pos, slot){
                         click_taken = true;
                         break;
                     }
-                }
-                //if the slot wasn't taken, push back in free list
-                if let Some(slot) = slot{
-                    self.free_slots.push(slot);
                 }
             }
 
             if response.dragged(){
                 for orbital in &mut self.orbitals{
-                    pausing |= orbital.on_drag(interaction_pos);
+                    let _pausing = orbital.on_drag(interaction_pos);
                 }
             }
 
@@ -87,10 +81,8 @@ impl SolarSystem{
 
             //checkout response
             if response.clicked() && !click_taken{
-                if let Some(pos) = input.pointer.interact_pos(){
-                    let slot = self.alloc_slot();
-                    self.orbitals.push(Orbital::new_primary(pos, self.last_center, slot));
-                }
+                let slot = self.find_slot();
+                self.orbitals.push(Orbital::new_primary(interaction_pos, self.last_center, slot));
             }
 
             let scroll_delta = input.scroll_delta.y / 1000.0;
@@ -99,13 +91,21 @@ impl SolarSystem{
                     orbital.on_scroll(scroll_delta, interaction_pos);
                 }
             }
+
+            if input.pointer.button_released(PointerButton::Secondary){
+                for orbit in (0..self.orbitals.len()).rev(){
+                    if self.orbitals[orbit].on_delete(interaction_pos){
+                        self.orbitals.remove(orbit);
+                    }
+                }
+            }
         }
 
 
         //update inner animation, but only if not pausing
         let delta = self.last_update.elapsed().as_secs_f32();
         self.last_update = Instant::now();
-        if !pausing{
+        if !self.paused{
             for orb in &mut self.orbitals{
                 orb.update(delta);
             }
@@ -123,14 +123,26 @@ impl SolarSystem{
         let _ = coms.send(ComMsg::SolarState(state_builder));
     }
 
-    fn alloc_slot(&mut self) -> usize{
-        if let Some(slot) = self.free_slots.pop(){
-            slot
-        }else{
-            let slot = self.next_slot;
-            self.next_slot += 1;
-            slot
+    fn find_slot(&mut self) -> usize{
+        //TODO: searching is currently garbage. Would be better to track.
+        'search: for candidate in 0..{
+            for o in &self.orbitals{
+                if o.slot_take(candidate){
+                    continue 'search; //restart
+                }
+            }
+
+            //not taken
+            nih_log!("usable at {}", candidate);
+            if candidate >= OscillatorBank::DEFAULT_BANK_SIZE{
+                nih_log!("Exceeding default oscillator bank!");
+            }
+            return candidate;
         }
+
+        //NOTE: unreachable... and the search is garbage anyways
+        0
     }
+
 
 }

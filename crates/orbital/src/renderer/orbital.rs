@@ -1,8 +1,9 @@
 use std::f32::consts::PI;
+use nih_plug::nih_log;
 use nih_plug_egui::egui::{Painter, Color32, Stroke, Vec2, Pos2, Shape, epaint::CircleShape};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{com::{SolarState, OrbitalState}, osc::{OscType, mel_to_hz, hz_to_mel}};
+use crate::{com::{SolarState, OrbitalState}, osc::{OscType, mel_to_freq}};
 
 pub const TWOPI: f32 = 2.0 * PI;
 fn rotate_vec2(src: Vec2, angle: f32) -> Vec2{
@@ -16,7 +17,7 @@ fn rotate_vec2(src: Vec2, angle: f32) -> Vec2{
     v
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 pub(super) enum ObjTy{
     Sun,
     Planet,
@@ -133,7 +134,7 @@ pub struct Orbital{
 
     //current phase (in radiant) of this orbital.
     phase: f32,
-    //speed of this orbital in units/sec.
+    //abstract orbital speed. In case of an
     speed: f32,
 
     orbit_width: f32,
@@ -159,11 +160,15 @@ impl Orbital{
     const MAX_ORBIT_SEC: f32 = 100.0;
     const MAX_ORBIT_PRIM: f32 = 300.0;
     const ZERO_SHIFT: Vec2 = Vec2{x: 0.0, y: -1.0};
+    ///Multplier used to scale the `speed` value to mel. The mel scale reaches 10k Hz @
+    /// around 3.6k mel. This means a speed value of 1.0 is ~2.5k Hz.
+    pub const MEL_MULTIPLIER: f32 = 10.0;
 
+    const SPEED_SCROLL_MULTIPLIER: f32 = 0.1;
 
     pub fn new_primary(at: Pos2, center: Pos2, slot: usize) -> Self{
 
-        let radius = (at - center).length().clamp(Self::MIN_ORBIT, ObjTy::Planet.max_orbit());
+        let radius = (at - center).length();
         //find angle in a way that it is placed at this location.
         let offset = 0.0;
         let mut new_orb = Orbital {
@@ -246,11 +251,11 @@ impl Orbital{
         }
     }
 
-    pub fn on_drag_start(&mut self, at: Pos2, slot: &mut Option<usize>) -> bool{
+    pub fn on_drag_start(&mut self, at: Pos2, slot: usize) -> bool{
         let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at)){
             (false, true) => {
                 //drag start on planet, start dragging out a child
-                self.interaction = Interaction::DragNewChild { slot: slot.take().unwrap(), obj: self.obj.lower(), at };
+                self.interaction = Interaction::DragNewChild { slot, obj: self.obj.lower(), at };
                 true
             },
             (true, true) => {
@@ -320,6 +325,7 @@ impl Orbital{
         if !self.interaction.is_none(){
             match &self.interaction {
                 Interaction::DragNewChild { slot, obj, at } => {
+                    nih_log!("adding {:?} @ {}", obj, slot);
                     let mut child = Orbital::new_primary(*at, self.obj_pos(), *slot);
                     child.radius = child.radius.clamp(Self::MIN_ORBIT, obj.max_orbit());
                     child.obj = *obj;
@@ -345,7 +351,11 @@ impl Orbital{
 
     pub fn on_scroll(&mut self, delta: f32, at: Pos2){
         if self.is_on_orbit_handle(at){
-            self.speed = (self.speed + delta).max(0.001);
+            self.speed = if delta < 0.0{
+                self.speed * (1.0 - Self::SPEED_SCROLL_MULTIPLIER)
+            }else{
+                self.speed * (1.0 + Self::SPEED_SCROLL_MULTIPLIER)
+            };
         }
         for c in &mut self.children{
             c.on_scroll(delta, at);
@@ -371,6 +381,22 @@ impl Orbital{
 
         let rad = (loc-pos).length();
         rad < (Self::OBJSIZE + Self::HANDLE_WIDTH)
+    }
+
+    //checks if self should be deleted
+    pub fn on_delete(&mut self, at: Pos2) -> bool{
+        if self.is_on_orbit_handle(at) || self.is_on_planet(at){
+            true
+        }else{
+            //reverse through children, delete all that report it
+            for i in (0..self.children.len()).rev(){
+                if self.children[i].on_delete(at){
+                    self.children.remove(i);
+                }
+            }
+
+            false
+        }
     }
 
     ///Notifies that cursor is hovering, returns true if hovering over anything interactable.
@@ -411,30 +437,45 @@ impl Orbital{
         is_interactable
     }
 
+    pub fn slot_take(&self, slot: usize) -> bool{
+        if self.osc_slot == slot{
+            return true
+        }
+
+        for c in &self.children{
+            if c.slot_take(slot){
+                return true;
+            }
+        }
+
+        false
+    }
+
     ///appends self and the children to the state, returns the index self was added at
     pub fn build_solar_state(&self, builder: &mut SolarState, parent_slot: Option<usize>){
         let ty = if let Some(slot) = parent_slot{
             let dist = self.radius - Self::MIN_ORBIT;
             //linear blend in orbit range
-            let range = (dist / (self.obj.max_orbit() - Self::MIN_ORBIT));
+            let range = dist / (self.obj.max_orbit() - Self::MIN_ORBIT);
             OscType::Modulator{
                 parent_osc_slot: slot,
-                frequency: mel_to_hz(self.speed * 10.0), //TODO calculat via simple mapping from view.
-                range,
+                speed: self.speed,
+                range: range.clamp(0.0, 1.0),
             }
         }else{
             let volume = self.radius / (self.obj.max_orbit() - Self::MIN_ORBIT);
             OscType::Primary{
-                base_multiplier: self.speed.max(0.0),
+                base_multiplier: self.speed,
                 volume
             }
         };
         //Push self
         builder.states.push(OrbitalState { offset: self.offset, ty });
 
-        if let Interaction::DragNewChild { slot, obj: _, at } = &self.interaction{
+        if let Interaction::DragNewChild { slot, obj, at } = &self.interaction{
             //add new child already so we can hear it.
             let mut tmp = Orbital::new_primary(*at, self.obj_pos(), *slot);
+            tmp.obj = *obj;
             tmp.radius = tmp.radius.clamp(Self::MIN_ORBIT, tmp.obj.max_orbit());
             tmp.build_solar_state(builder, Some(self.osc_slot));
         }
