@@ -60,6 +60,17 @@ impl ObjTy{
             ObjTy::Astroid => 7.0
         }
     }
+
+    pub fn is_secondary(&self) -> bool{
+        match self {
+            ObjTy::Sun | ObjTy::Planet => false,
+            _ => true
+        }
+    }
+
+    pub fn max_orbit(&self) -> f32{
+        if self.is_secondary(){Orbital::MAX_ORBIT_SEC}else{Orbital::MAX_ORBIT_PRIM}
+    }
 }
 
 #[derive(Clone)]
@@ -144,12 +155,15 @@ impl Orbital{
 
     const ORBIT_LINE_WIDTH: f32 = 1.0;
     const ORBIT_LINE_FAT: f32 = 2.0;
-
+    const MIN_ORBIT: f32 = 25.0;
+    const MAX_ORBIT_SEC: f32 = 100.0;
+    const MAX_ORBIT_PRIM: f32 = 300.0;
     const ZERO_SHIFT: Vec2 = Vec2{x: 0.0, y: -1.0};
+
 
     pub fn new_primary(at: Pos2, center: Pos2, slot: usize) -> Self{
 
-        let radius = (at - center).length();
+        let radius = (at - center).length().clamp(Self::MIN_ORBIT, ObjTy::Planet.max_orbit());
         //find angle in a way that it is placed at this location.
         let offset = 0.0;
         let mut new_orb = Orbital {
@@ -191,6 +205,7 @@ impl Orbital{
             //build a temp object and paint that
             let mut tmp = Orbital::new_primary(*at, self.obj_pos(), *slot);
             tmp.obj = *obj;
+            tmp.radius = tmp.radius.clamp(Self::MIN_ORBIT, tmp.obj.max_orbit());
             tmp.paint(painter);
         }
 
@@ -274,7 +289,7 @@ impl Orbital{
             match self.interaction{
                 Interaction::DragOrbit { at } => {
                     let new_rad = (self.center.to_vec2() - at.to_vec2()).length();
-                    self.radius = new_rad;
+                    self.radius = new_rad.clamp(Self::MIN_ORBIT, self.obj.max_orbit());
                     let new_center = self.obj_pos();
                     for c in &mut self.children{
                         c.update_center(new_center);
@@ -306,6 +321,7 @@ impl Orbital{
             match &self.interaction {
                 Interaction::DragNewChild { slot, obj, at } => {
                     let mut child = Orbital::new_primary(*at, self.obj_pos(), *slot);
+                    child.radius = child.radius.clamp(Self::MIN_ORBIT, obj.max_orbit());
                     child.obj = *obj;
                     self.children.push(child);
                     self.interaction = Interaction::None;
@@ -398,20 +414,28 @@ impl Orbital{
     ///appends self and the children to the state, returns the index self was added at
     pub fn build_solar_state(&self, builder: &mut SolarState, parent_slot: Option<usize>){
         let ty = if let Some(slot) = parent_slot{
+            let dist = self.radius - Self::MIN_ORBIT;
+            //linear blend in orbit range
+            let range = (dist / (self.obj.max_orbit() - Self::MIN_ORBIT));
             OscType::Modulator{
                 parent_osc_slot: slot,
                 frequency: mel_to_hz(self.speed * 10.0), //TODO calculat via simple mapping from view.
-                range: ((self.radius - 50.0) / 50.0).clamp(0.0, 1.0), //TODO calculate from orbit.
+                range,
             }
         }else{
-            OscType::Primary{base_multiplier: self.speed.max(0.0)}
+            let volume = self.radius / (self.obj.max_orbit() - Self::MIN_ORBIT);
+            OscType::Primary{
+                base_multiplier: self.speed.max(0.0),
+                volume
+            }
         };
         //Push self
         builder.states.push(OrbitalState { offset: self.offset, ty });
 
         if let Interaction::DragNewChild { slot, obj: _, at } = &self.interaction{
             //add new child already so we can hear it.
-            let tmp = Orbital::new_primary(*at, self.obj_pos(), *slot);
+            let mut tmp = Orbital::new_primary(*at, self.obj_pos(), *slot);
+            tmp.radius = tmp.radius.clamp(Self::MIN_ORBIT, tmp.obj.max_orbit());
             tmp.build_solar_state(builder, Some(self.osc_slot));
         }
 

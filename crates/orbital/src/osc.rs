@@ -23,6 +23,7 @@ pub enum OscType{
         ///Base frequency multiplier. This basically means if a note @ 440Hz is played, and this is 0.5, then
         /// the primary oscillator has a base frequency of 220Hz
         base_multiplier: f32,
+        volume: f32,
     },
     ///Modulates the Oscilator at the given index in the bank.
     Modulator{
@@ -53,7 +54,7 @@ impl OscType{
     #[inline]
     fn phase_step(&self, d_sec: f32, base_frequency: f32, frequency_multiplier: f32) -> f32{
         match self{
-            OscType::Primary { base_multiplier } => {
+            OscType::Primary { base_multiplier, .. } => {
                 //calculate step by finding "our" base frequency, and weighting that with the percentile. Then advance
                 // via δ
                 let local_base = (base_frequency * base_multiplier).max(Self::MINFREQ);
@@ -73,6 +74,14 @@ impl OscType{
             true
         }else{
             false
+        }
+    }
+
+    fn volume(&self) -> f32{
+        if let OscType::Primary {volume, .. } = self{
+            *volume
+        }else{
+            1.0
         }
     }
 }
@@ -105,7 +114,7 @@ impl Oscillator{
     }
 
     fn sample(&self) -> f32{
-        (self.phase + self.offset).cos()
+        (self.phase + self.offset).cos() * self.ty.volume()
     }
 }
 
@@ -222,7 +231,7 @@ impl OscillatorBank{
         }
 
         //now update
-        accumulated / div as f32
+        sigmoid(accumulated)
     }
 
     //Fills the buffer with sound jo
