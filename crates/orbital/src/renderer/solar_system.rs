@@ -58,11 +58,12 @@ impl SolarSystem{
             let mut click_taken = false;
 
             if response.drag_started(){
-                let mut slot = self.find_slot();
-                for orbital in &mut self.orbitals{
-                    if orbital.on_drag_start(interaction_pos, slot){
-                        click_taken = true;
-                        break;
+                if let Some(slot) = self.find_slot(){
+                    for orbital in &mut self.orbitals{
+                        if orbital.on_drag_start(interaction_pos, slot){
+                            click_taken = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -81,8 +82,10 @@ impl SolarSystem{
 
             //checkout response
             if response.clicked() && !click_taken{
-                let slot = self.find_slot();
-                self.orbitals.push(Orbital::new_primary(interaction_pos, self.last_center, slot));
+                //try to find an not yet used osc row
+                if let Some(slot) = self.find_slot(){
+                    self.orbitals.push(Orbital::new_primary(interaction_pos, self.last_center, slot));
+                }
             }
 
             let scroll_delta = input.scroll_delta.y / 1000.0;
@@ -123,7 +126,7 @@ impl SolarSystem{
         let _ = coms.send(ComMsg::SolarState(state_builder));
     }
 
-    fn find_slot(&mut self) -> usize{
+    fn find_slot(&mut self) -> Option<usize>{
         //TODO: searching is currently garbage. Would be better to track.
         'search: for candidate in 0..{
             for o in &self.orbitals{
@@ -134,14 +137,15 @@ impl SolarSystem{
 
             //not taken
             nih_log!("usable at {}", candidate);
-            if candidate >= OscillatorBank::DEFAULT_BANK_SIZE{
+            if candidate >= OscillatorBank::OSC_COUNT{
                 nih_log!("Exceeding default oscillator bank!");
+                return None;
             }
-            return candidate;
+            return Some(candidate);
         }
 
         //NOTE: unreachable... and the search is garbage anyways
-        0
+        None
     }
 
 

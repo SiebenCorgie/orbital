@@ -174,7 +174,7 @@ impl Default for OscillatorBank{
     fn default() -> Self {
         //pre allocating oscillator banks. But vec allows us to outgrow if neede
         OscillatorBank {
-            oscillators: vec![Oscillator::default(); Self::DEFAULT_BANK_SIZE],
+            oscillators: vec![Oscillator::default(); Self::OSC_COUNT],
             speed_multiplier: 0.0,
             mod_ty: ModulationType::Absolute,
             phase: 0.0,
@@ -183,7 +183,10 @@ impl Default for OscillatorBank{
 }
 
 impl OscillatorBank{
-    pub const DEFAULT_BANK_SIZE: usize = 32;
+    ///Number of maximal active voices.
+    pub const VOICE_COUNT: usize = 10;
+    ///Number of oscillators per voice.
+    pub const OSC_COUNT: usize = 16;
 
     pub fn on_msg(&mut self, msg: ComMsg){
         match msg {

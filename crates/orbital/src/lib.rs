@@ -10,7 +10,10 @@ use std::sync::{Arc, Mutex};
 
 mod renderer;
 mod osc;
+mod osc_array;
 mod com;
+mod envelope;
+
 /// The time it takes for the peak meter to decay by 12 dB after switching to complete silence.
 const PEAK_METER_DECAY_MS: f64 = 150.0;
 
@@ -63,7 +66,7 @@ impl Default for Orbital {
 impl Default for OrbitalParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(640, 480),
+            editor_state: EguiState::from_size(800, 800),
 
             // See the main gain example for more details
             mod_ty: Arc::new(Mutex::new(ModulationType::Absolute)),
