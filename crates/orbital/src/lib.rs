@@ -1,12 +1,16 @@
 use atomic_float::AtomicF32;
-use nih_plug::prelude::*;
+use com::ComMsg;
+use crossbeam::channel::{Sender, Receiver, TryRecvError};
+use nih_plug::{prelude::*, params::persist, util::midi_note_to_freq};
 use nih_plug_egui::{create_egui_editor, egui::{self, Painter}, EguiState};
-use renderer::Renderer;
-use std::sync::Arc;
+use osc::OscillatorBank;
+use renderer::{Renderer, solar_system::SolarSystem};
+use std::sync::{Arc, Mutex};
 
 
 mod renderer;
-
+mod osc;
+mod com;
 /// The time it takes for the peak meter to decay by 12 dB after switching to complete silence.
 const PEAK_METER_DECAY_MS: f64 = 150.0;
 
@@ -14,6 +18,7 @@ const PEAK_METER_DECAY_MS: f64 = 150.0;
 pub struct Orbital {
     params: Arc<OrbitalParams>,
 
+    com_channel: (Sender<ComMsg>, Receiver<ComMsg>),
     /// Needed to normalize the peak meter's response based on the sample rate.
     peak_meter_decay_weight: f32,
     /// The current data for the peak meter. This is stored as an [`Arc`] so we can share it between
@@ -22,6 +27,9 @@ pub struct Orbital {
     ///
     /// This is stored as voltage gain.
     peak_meter: Arc<AtomicF32>,
+
+    ///in audio-thread osc bank
+    bank: OscillatorBank
 }
 
 
@@ -36,18 +44,20 @@ pub struct OrbitalParams {
     #[id = "gain"]
     pub gain: FloatParam,
 
-    // TODO: Remove this parameter when we're done implementing the widgets
-    #[id = "foobar"]
-    pub some_int: IntParam,
+    #[persist = "OscBank"]
+    pub bank: Arc<Mutex<OscillatorBank>>,
+    #[persist = "SolarSystem"]
+    pub solar_system: Arc<Mutex<SolarSystem>>,
 }
 
 impl Default for Orbital {
     fn default() -> Self {
         Self {
             params: Arc::new(OrbitalParams::default()),
-
+            com_channel: crossbeam::channel::unbounded(),
             peak_meter_decay_weight: 1.0,
             peak_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
+            bank: OscillatorBank::default()
         }
     }
 }
@@ -71,7 +81,8 @@ impl Default for OrbitalParams {
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db()),
-            some_int: IntParam::new("Something", 3, IntRange::Linear { min: 0, max: 3 }),
+            bank: Arc::new(Mutex::new(OscillatorBank::default())),
+            solar_system: Arc::new(Mutex::new(SolarSystem::new())),
         }
     }
 }
@@ -99,7 +110,7 @@ impl Plugin for Orbital {
     fn editor(&self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
         let peak_meter = self.peak_meter.clone();
-        let renderer = Renderer::new(params);
+        let renderer = Renderer::new(params, self.com_channel.0.clone());
         create_egui_editor(
             self.params.editor_state.clone(),
             renderer,
@@ -130,42 +141,56 @@ impl Plugin for Orbital {
             .powf((buffer_config.sample_rate as f64 * PEAK_METER_DECAY_MS / 1000.0).recip())
             as f32;
 
+        nih_log!("Init");
         true
+    }
+
+
+    fn deactivate(&mut self) {
+        //feed back current parameter state
+        if let Ok(mut lck) = self.params.bank.lock(){
+            *lck = self.bank.clone();
+        }else{
+            nih_error!("Failed to serialize osc bank");
+        }
     }
 
     fn process(
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<Self>,
+        context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
 
-        for channel_samples in buffer.iter_samples() {
-            let mut amplitude = 0.0;
-            let num_samples = channel_samples.len();
 
-            let gain = self.params.gain.smoothed.next();
-            for sample in channel_samples {
-                *sample *= gain;
-                amplitude += *sample;
-            }
-
-            // To save resources, a plugin can (and probably should!) only perform expensive
-            // calculations that are only displayed on the GUI while the GUI is open
-            if self.params.editor_state.is_open() {
-                amplitude = (amplitude / num_samples as f32).abs();
-                let current_peak_meter = self.peak_meter.load(std::sync::atomic::Ordering::Relaxed);
-                let new_peak_meter = if amplitude > current_peak_meter {
-                    amplitude
-                } else {
-                    current_peak_meter * self.peak_meter_decay_weight
-                        + amplitude * (1.0 - self.peak_meter_decay_weight)
-                };
-
-                self.peak_meter
-                    .store(new_peak_meter, std::sync::atomic::Ordering::Relaxed)
+        //try at most 10
+        // TODO: check if we maybe should do that async
+        for _try in 0..10{
+            match self.com_channel.1.try_recv(){
+                Ok(msg) => {
+                    nih_log!("Got: {:?}", msg);
+                    self.bank.on_msg(msg);
+                }
+                Err(e) => {
+                    match e {
+                        TryRecvError::Disconnected => {
+                            nih_log!("com was disconnected!");
+                        },
+                        TryRecvError::Empty => break, //end recy loop for now
+                    }
+                }
             }
         }
+
+        while let Some(ev) = context.next_event(){
+            match ev{
+                NoteEvent::NoteOn { note, .. } => self.bank.speed_multiplier = midi_note_to_freq(note),
+                NoteEvent::NoteOff { .. } => self.bank.speed_multiplier = 0.0,
+                _ => {}
+            }
+        }
+
+        self.bank.process(buffer, context.transport().sample_rate);
 
         ProcessStatus::Normal
     }
