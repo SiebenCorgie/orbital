@@ -1,7 +1,8 @@
 use nih_plug::{nih_error, prelude::{Buffer, Enum}};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
-use crate::{com::{ComMsg, OrbitalState}, renderer::orbital::{TWOPI, Orbital}};
+use crate::{com::{ComMsg, OrbitalState}, renderer::orbital::{TWOPI, Orbital}, osc_array::VoiceSampling};
 
 pub fn sigmoid(x: f32) -> f32{
     x / (1.0 + x * x).sqrt()
@@ -23,7 +24,7 @@ pub enum ModulationType{
 
 ///There are two oscillator types, primary, and modulator. However we also track turned off osc's
 /// for performance reasons
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum OscType{
     Primary{
         ///Base frequency multiplier. This basically means if a note @ 440Hz is played, and this is 0.5, then
@@ -119,7 +120,7 @@ impl OscType{
 
 /// Single oscillator state. Used to sync graphics and audio engine as well as
 /// saving the state
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub struct Oscillator{
     ///Combined modulation percentile. When generation the next value the base_frequency
     /// is slowed down/ speed up by this
@@ -161,11 +162,12 @@ impl Default for Oscillator{
     }
 }
 
+#[serde_as]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OscillatorBank{
     ///Stores *all* oscillators. The children are declared in form of indices within the osc structs.
-    oscillators: Vec<Oscillator>,
-    pub speed_multiplier: f32,
+    #[serde_as(as = "[_; OscillatorBank::BANK_SIZE]")]
+    oscillators: [Oscillator; Self::BANK_SIZE],
     pub mod_ty: ModulationType,
     phase: f32,
 }
@@ -174,8 +176,7 @@ impl Default for OscillatorBank{
     fn default() -> Self {
         //pre allocating oscillator banks. But vec allows us to outgrow if neede
         OscillatorBank {
-            oscillators: vec![Oscillator::default(); Self::OSC_COUNT],
-            speed_multiplier: 0.0,
+            oscillators: [Oscillator::default(); Self::BANK_SIZE],
             mod_ty: ModulationType::Absolute,
             phase: 0.0,
         }
@@ -187,6 +188,9 @@ impl OscillatorBank{
     pub const VOICE_COUNT: usize = 10;
     ///Number of oscillators per voice.
     pub const OSC_COUNT: usize = 16;
+
+    ///Number of oscs in the bank
+    pub const BANK_SIZE: usize = Self::VOICE_COUNT * Self::OSC_COUNT;
 
     pub fn on_msg(&mut self, msg: ComMsg){
         match msg {
@@ -210,12 +214,15 @@ impl OscillatorBank{
 
                 }
             },
-            ComMsg::SpeedMultiplier(new) => self.speed_multiplier = new,
         }
     }
 
-    ///Steps the whole bank once, returning a modulated value based on "base_frequency".
-    fn step(&mut self, base_frequency: f32, sample_delta: f32) -> f32{
+    fn osc_index(voice: usize, osc: usize) -> usize{
+        voice * Self::OSC_COUNT + osc
+    }
+
+    ///Steps the whole voice-bank once, returning a modulated value based on "base_frequency".
+    fn step(&mut self, voice: usize,  base_frequency: f32, sample_delta: f32) -> f32{
         //we have two stepping procedures. One is the "high resolution"
         // phase.cos() for base osciis, and the lower resolution LFO type cos-less approximation.
         // TODO: implement https://www.cl.cam.ac.uk/~am21/hakmemc.html @ 151
@@ -224,7 +231,8 @@ impl OscillatorBank{
         let mut accumulated = 0.0;
         let mut div = 0;
         //atm. step all
-        for osc_idx in 0..self.oscillators.len(){
+        for osc_idx in 0..Self::OSC_COUNT{
+            let osc_idx = Self::osc_index(voice, osc_idx);
             if self.oscillators[osc_idx].ty.is_off(){
                 continue;
             }
@@ -239,7 +247,7 @@ impl OscillatorBank{
                 //if we are a primary osc, add to acc
                 match osc.ty{
                     OscType::Primary { .. } => {
-                        accumulated += self.oscillators[osc_idx].sample();
+                        accumulated += osc.sample();
                         div += 1;
                     },
                     _ => {}
@@ -250,23 +258,18 @@ impl OscillatorBank{
         //now update all parents of any secondary osc.
         // NOTE: Can't do that in the first loop, since any osc might only be partially updated at that point.
         // TODO: maybe sort bank in a way that we can do that at once?
-        for i in 0..self.oscillators.len(){
-            if self.oscillators[i].ty.is_off(){
+        for osc_idx in 0..Self::OSC_COUNT{
+            let osc_idx = Self::osc_index(voice, osc_idx);
+            if self.oscillators[osc_idx].ty.is_off(){
                 continue;
             }
-            let update = if let OscType::Modulator { parent_osc_slot, range, .. } = &self.oscillators[i].ty {
+            if let OscType::Modulator { parent_osc_slot, range, .. } = self.oscillators[osc_idx].ty {
                 //NOTE: we got a phase for the mod oscillator. However the cos is (-1 .. 1). So we weight by range into (-range .. range).
                 //      Next we want to only modulate the range around (100% - range .. 100% + range), so we add 1
-                let modulatio_value = (self.oscillators[i].sample() * range) + 1.0;
-                Some((*parent_osc_slot, modulatio_value))
-            }else{
-                None
-            };
-
-            if let Some((parent, multiplier)) = update{
-                //if we got anything, update modulator
-                self.oscillators[parent].mod_counter += 1;
-                self.oscillators[parent].mod_multiplier += multiplier;
+                let modulatio_value = (self.oscillators[osc_idx].sample() * range) + 1.0;
+                let parent_osc = Self::osc_index(voice, parent_osc_slot);
+                self.oscillators[parent_osc].mod_counter += 1;
+                self.oscillators[parent_osc].mod_multiplier += modulatio_value;
             }
         }
 
@@ -275,10 +278,18 @@ impl OscillatorBank{
     }
 
     //Fills the buffer with sound jo
-    pub fn process(&mut self, buffer: &mut Buffer, sample_rate: f32){
+    pub fn process(&mut self, voices: &[VoiceSampling; OscillatorBank::VOICE_COUNT], buffer: &mut Buffer, sample_rate: f32){
         let delta_sec = 1.0 / sample_rate;
         for mut sample in buffer.iter_samples(){
-            let val = self.step(self.speed_multiplier, delta_sec);
+
+            let mut acc = 0.0;
+            for vidx in 0..Self::VOICE_COUNT{
+                if voices[vidx].is_active{
+                    acc += self.step(vidx, voices[vidx].base_frequency, delta_sec);// * voices[vidx].volume;
+                }
+            }
+
+            let val = sigmoid(acc);
             for csam in sample.iter_mut(){
                 *csam = val;
             }

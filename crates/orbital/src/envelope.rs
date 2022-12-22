@@ -1,4 +1,3 @@
-use nih_plug::prelude::Params;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -38,6 +37,7 @@ impl Default for EnvelopeParams{
 ///  ^                           ^
 ///  | press event               | release event
 /// ```
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Envelope{
     pub press: Option<f32>,
     pub release: Option<f32>,
@@ -53,12 +53,13 @@ impl Default for Envelope{
 impl Envelope{
     ///sets the press event `at` the given time, resets the release event.
     pub fn on_press(&mut self, at: f32){
-
+        self.press = Some(at);
+        self.release = None;
     }
 
     ///Sets release event `at` the given time. From now on if you sample after `at` you'll be in the release region.
     pub fn on_release(&mut self, at: f32){
-
+        self.release = Some(at);
     }
 
     ///samples a value of the current envelope. Note that the parameters are stacking.
@@ -80,7 +81,8 @@ impl Envelope{
         //offset into "local" time, where start == 0;
         at = at - start;
 
-        //check delay, if within just return zero.
+        //check delay, if within just return zero. This also applies for instance if
+        // start is in the future.
         if at < self.parameters.delay{
             return 0.0;
         }else{

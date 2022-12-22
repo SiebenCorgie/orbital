@@ -128,18 +128,11 @@ impl SolarSystem{
 
     fn find_slot(&mut self) -> Option<usize>{
         //TODO: searching is currently garbage. Would be better to track.
-        'search: for candidate in 0..{
+        'search: for candidate in 0..OscillatorBank::OSC_COUNT{
             for o in &self.orbitals{
                 if o.slot_take(candidate){
                     continue 'search; //restart
                 }
-            }
-
-            //not taken
-            nih_log!("usable at {}", candidate);
-            if candidate >= OscillatorBank::OSC_COUNT{
-                nih_log!("Exceeding default oscillator bank!");
-                return None;
             }
             return Some(candidate);
         }
@@ -147,6 +140,4 @@ impl SolarSystem{
         //NOTE: unreachable... and the search is garbage anyways
         None
     }
-
-
 }

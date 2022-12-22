@@ -18,6 +18,4 @@ pub struct SolarState{
 pub enum ComMsg{
     ///new solar state update
     SolarState(SolarState),
-    ///speed multiplier update
-    SpeedMultiplier(f32)
 }

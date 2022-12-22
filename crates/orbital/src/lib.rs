@@ -4,6 +4,7 @@ use crossbeam::channel::{Sender, Receiver, TryRecvError};
 use nih_plug::{prelude::*, params::persist, util::midi_note_to_freq};
 use nih_plug_egui::{create_egui_editor, egui::{self, Painter}, EguiState};
 use osc::{OscillatorBank, ModulationType};
+use osc_array::OscArray;
 use renderer::{Renderer, solar_system::SolarSystem};
 use std::sync::{Arc, Mutex};
 
@@ -32,7 +33,10 @@ pub struct Orbital {
     peak_meter: Arc<AtomicF32>,
 
     ///in audio-thread osc bank
-    bank: OscillatorBank
+    synth: OscArray,
+
+    ///last known time (in sec.)
+    transport_time: f32,
 }
 
 
@@ -45,8 +49,8 @@ pub struct OrbitalParams {
     editor_state: Arc<EguiState>,
     #[persist = "modty"]
     pub mod_ty: Arc<Mutex<ModulationType>>,
-    #[persist = "OscBank"]
-    pub bank: Arc<Mutex<OscillatorBank>>,
+    #[persist = "Synth"]
+    pub synth: Arc<Mutex<OscArray>>,
     #[persist = "SolarSystem"]
     pub solar_system: Arc<Mutex<SolarSystem>>,
 }
@@ -58,7 +62,8 @@ impl Default for Orbital {
             com_channel: crossbeam::channel::unbounded(),
             peak_meter_decay_weight: 1.0,
             peak_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
-            bank: OscillatorBank::default()
+            synth: OscArray::default(),
+            transport_time: 0.0,
         }
     }
 }
@@ -70,7 +75,7 @@ impl Default for OrbitalParams {
 
             // See the main gain example for more details
             mod_ty: Arc::new(Mutex::new(ModulationType::Absolute)),
-            bank: Arc::new(Mutex::new(OscillatorBank::default())),
+            synth: Arc::new(Mutex::new(OscArray::default())),
             solar_system: Arc::new(Mutex::new(SolarSystem::new())),
         }
     }
@@ -98,13 +103,12 @@ impl Plugin for Orbital {
 
     fn editor(&self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let params = self.params.clone();
-        let peak_meter = self.peak_meter.clone();
         let renderer = Renderer::new(params, self.com_channel.0.clone());
         create_egui_editor(
             self.params.editor_state.clone(),
             renderer,
             |_, _| {},
-            move |egui_ctx, setter, renderer| {
+            move |egui_ctx, _setter, renderer| {
                 egui::CentralPanel::default().show(egui_ctx, |ui| {
                     ui.add(renderer);
                 });
@@ -136,8 +140,8 @@ impl Plugin for Orbital {
 
     fn deactivate(&mut self) {
         //feed back current parameter state
-        if let Ok(mut lck) = self.params.bank.lock(){
-            *lck = self.bank.clone();
+        if let Ok(mut lck) = self.params.synth.lock(){
+            *lck = self.synth.clone();
         }else{
             nih_error!("Failed to serialize osc bank");
         }
@@ -150,13 +154,20 @@ impl Plugin for Orbital {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
 
+        //advance time stamp either from daw time, or by counting buffer samples
+        if let Some(stamp) = context.transport().pos_seconds(){
+            self.transport_time = stamp as f32;
+        }else{
+            //calculate based on buffer size and sample rate
+            self.transport_time += (buffer.len() / buffer.channels()) as f32  / context.transport().sample_rate;
+        }
 
         //try at most 10
         // TODO: check if we maybe should do that async
         for _try in 0..10{
             match self.com_channel.1.try_recv(){
                 Ok(msg) => {
-                    self.bank.on_msg(msg);
+                    self.synth.bank.on_msg(msg);
                 }
                 Err(e) => {
                     match e {
@@ -170,18 +181,18 @@ impl Plugin for Orbital {
         }
 
         if let Ok(ty) = self.params.mod_ty.try_lock(){
-            self.bank.mod_ty = ty.clone();
+            self.synth.bank.mod_ty = ty.clone();
         }
 
         while let Some(ev) = context.next_event(){
             match ev{
-                NoteEvent::NoteOn { note, .. } => self.bank.speed_multiplier = midi_note_to_freq(note),
-                NoteEvent::NoteOff { .. } => self.bank.speed_multiplier = 0.0,
+                NoteEvent::NoteOn { note, .. } => self.synth.note_on(note, self.transport_time),
+                NoteEvent::NoteOff { note, .. } => self.synth.note_off(note, self.transport_time),
                 _ => {}
             }
         }
 
-        self.bank.process(buffer, context.transport().sample_rate);
+        self.synth.process(buffer, context.transport().sample_rate);
 
         ProcessStatus::Normal
     }
@@ -193,10 +204,10 @@ impl ClapPlugin for Orbital {
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[
-        ClapFeature::AudioEffect,
+        ClapFeature::Instrument,
         ClapFeature::Stereo,
-        ClapFeature::Mono,
         ClapFeature::Utility,
+        ClapFeature::Synthesizer,
     ];
 }
 
