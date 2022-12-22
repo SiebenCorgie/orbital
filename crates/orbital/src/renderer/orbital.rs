@@ -470,7 +470,11 @@ impl Orbital{
             }
         };
         //Push self
-        builder.states.push(OrbitalState { offset: self.offset, ty });
+        builder.states.push(OrbitalState {
+            offset: self.offset,
+            ty,
+            slot: self.osc_slot
+        });
 
         if let Interaction::DragNewChild { slot, obj, at } = &self.interaction{
             //add new child already so we can hear it.

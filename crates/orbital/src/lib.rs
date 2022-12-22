@@ -18,25 +18,18 @@ mod envelope;
 /// The time it takes for the peak meter to decay by 12 dB after switching to complete silence.
 const PEAK_METER_DECAY_MS: f64 = 150.0;
 
+pub type Time = f64;
+
 /// This is mostly identical to the gain example, minus some fluff, and with a GUI.
 pub struct Orbital {
     params: Arc<OrbitalParams>,
 
     com_channel: (Sender<ComMsg>, Receiver<ComMsg>),
-    /// Needed to normalize the peak meter's response based on the sample rate.
-    peak_meter_decay_weight: f32,
-    /// The current data for the peak meter. This is stored as an [`Arc`] so we can share it between
-    /// the GUI and the audio processing parts. If you have more state to share, then it's a good
-    /// idea to put all of that in a struct behind a single `Arc`.
-    ///
-    /// This is stored as voltage gain.
-    peak_meter: Arc<AtomicF32>,
-
     ///in audio-thread osc bank
     synth: OscArray,
 
     ///last known time (in sec.)
-    transport_time: f32,
+    transport_time: Time,
 }
 
 
@@ -60,8 +53,6 @@ impl Default for Orbital {
         Self {
             params: Arc::new(OrbitalParams::default()),
             com_channel: crossbeam::channel::unbounded(),
-            peak_meter_decay_weight: 1.0,
-            peak_meter: Arc::new(AtomicF32::new(util::MINUS_INFINITY_DB)),
             synth: OscArray::default(),
             transport_time: 0.0,
         }
@@ -127,18 +118,14 @@ impl Plugin for Orbital {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        // After `PEAK_METER_DECAY_MS` milliseconds of pure silence, the peak meter's value should
-        // have dropped by 12 dB
-        self.peak_meter_decay_weight = 0.25f64
-            .powf((buffer_config.sample_rate as f64 * PEAK_METER_DECAY_MS / 1000.0).recip())
-            as f32;
-
         nih_log!("Init");
         true
     }
 
 
     fn deactivate(&mut self) {
+
+        self.transport_time = 0.0;
         //feed back current parameter state
         if let Ok(mut lck) = self.params.synth.lock(){
             *lck = self.synth.clone();
@@ -154,13 +141,16 @@ impl Plugin for Orbital {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
 
+        /*
         //advance time stamp either from daw time, or by counting buffer samples
         if let Some(stamp) = context.transport().pos_seconds(){
             self.transport_time = stamp as f32;
         }else{
             //calculate based on buffer size and sample rate
             self.transport_time += (buffer.len() / buffer.channels()) as f32  / context.transport().sample_rate;
-        }
+        }*/
+
+        let buffer_length = (buffer.len() / buffer.channels()) as Time / context.transport().sample_rate as f64;
 
         //try at most 10
         // TODO: check if we maybe should do that async
@@ -192,7 +182,10 @@ impl Plugin for Orbital {
             }
         }
 
-        self.synth.process(buffer, context.transport().sample_rate);
+
+        self.synth.process(buffer, context.transport().sample_rate, self.transport_time, buffer_length);
+        //update time
+        self.transport_time += buffer_length;
 
         ProcessStatus::Normal
     }

@@ -2,7 +2,7 @@ use nih_plug::{nih_error, prelude::{Buffer, Enum}};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::{com::{ComMsg, OrbitalState}, renderer::orbital::{TWOPI, Orbital}, osc_array::VoiceSampling};
+use crate::{com::{ComMsg, OrbitalState}, renderer::orbital::{TWOPI, Orbital}, osc_array::{OscVoiceState, VoiceState}, Time, envelope::lerp};
 
 pub fn sigmoid(x: f32) -> f32{
     x / (1.0 + x * x).sqrt()
@@ -203,17 +203,25 @@ impl OscillatorBank{
 
                 //reconifg all oscs
                 // TODO: do diff and lerp between changes, reset on type change
-                for (idx, state) in new_state.states.into_iter().enumerate(){
-                    let OrbitalState { offset, ty } = state;
-                    if let Some(osc) = self.oscillators.get_mut(idx){
+                for state in new_state.states.into_iter(){
+                    //set all oscillators on the line `idx` to the given state
+                    let OrbitalState { offset, ty, slot } = state;
+                    self.on_osc_line(slot, |osc|{
                         osc.ty = ty;
                         osc.offset = offset;
-                    }else{
-                        nih_error!("outside oscillator bank, allocating!");
-                    }
-
+                    });
                 }
             },
+        }
+    }
+
+    fn on_osc_line(&mut self, line: usize, f: impl Fn(&mut Oscillator)){
+        if line >= Self::OSC_COUNT{
+            return;
+        }
+
+        for vidx in 0..Self::VOICE_COUNT{
+            f(&mut self.oscillators[Self::osc_index(vidx, line)]);
         }
     }
 
@@ -274,25 +282,32 @@ impl OscillatorBank{
         }
 
         //now update
-        sigmoid(accumulated)
+        accumulated
     }
 
     //Fills the buffer with sound jo
-    pub fn process(&mut self, voices: &[VoiceSampling; OscillatorBank::VOICE_COUNT], buffer: &mut Buffer, sample_rate: f32){
+    pub fn process(&mut self, voices: &[OscVoiceState; OscillatorBank::VOICE_COUNT], buffer: &mut Buffer, sample_rate: f32, buffer_time_start: Time, buffer_time_length: Time){
         let delta_sec = 1.0 / sample_rate;
-        for mut sample in buffer.iter_samples(){
 
+        let mut sample_time = buffer_time_start;
+        let mut sample_offset = 0.0;
+        for mut sample in buffer.iter_samples(){
             let mut acc = 0.0;
             for vidx in 0..Self::VOICE_COUNT{
-                if voices[vidx].is_active{
-                    acc += self.step(vidx, voices[vidx].base_frequency, delta_sec);// * voices[vidx].volume;
+                if voices[vidx].state.is_active(){
+                    let alpha = (sample_time.sin() + 1.0) / 2.0;
+                    let volume = lerp(0.0, 1.0, alpha as f32);
+                    acc += self.step(vidx, voices[vidx].freq, delta_sec as f32) * volume as f32;
                 }
             }
 
-            let val = sigmoid(acc);
+            let val = acc;
             for csam in sample.iter_mut(){
                 *csam = val;
             }
+
+            sample_offset += delta_sec;
+            sample_time += delta_sec as Time;
         }
     }
 }

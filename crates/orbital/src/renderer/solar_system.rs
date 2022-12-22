@@ -116,7 +116,7 @@ impl SolarSystem{
 
         //finally send update to audio buffer
         let mut state_builder =  SolarState{
-            states: Vec::with_capacity(64), //todo count before?
+            states: Vec::with_capacity(OscillatorBank::OSC_COUNT),
         };
         for orb in &self.orbitals{
             orb.build_solar_state(&mut state_builder, None);

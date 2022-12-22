@@ -5,6 +5,8 @@ use crate::osc::OscType;
 pub struct OrbitalState{
     pub offset: f32,
     pub ty: OscType,
+    //oscillator slot
+    pub slot: usize,
 }
 
 #[derive(Clone, Debug)]
