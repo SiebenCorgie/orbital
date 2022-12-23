@@ -44,10 +44,16 @@ impl Widget for &mut Renderer {
                     egui::ComboBox::from_id_source("modty")
                         .selected_text(format!("{:?}", mod_ty))
                         .show_ui(ui, |ui| {
-                            if ui.selectable_value(&mut mod_ty, ModulationType::Absolute, "Absolute").changed(){
+                            if ui
+                                .selectable_value(&mut mod_ty, ModulationType::Absolute, "Absolute")
+                                .changed()
+                            {
                                 mod_ty_changed = true;
                             }
-                            if ui.selectable_value(&mut mod_ty, ModulationType::Relative, "Relative").changed(){
+                            if ui
+                                .selectable_value(&mut mod_ty, ModulationType::Relative, "Relative")
+                                .changed()
+                            {
                                 mod_ty_changed = true;
                             }
                         })
@@ -119,8 +125,10 @@ impl Widget for &mut Renderer {
         if env_changed {
             let _ = self.msg_sender.send(ComMsg::EnvChanged(local_env));
         }
-        if mod_ty_changed{
-            let _ = self.msg_sender.send(ComMsg::ModRelationChanged(mod_ty.clone()));
+        if mod_ty_changed {
+            let _ = self
+                .msg_sender
+                .send(ComMsg::ModRelationChanged(mod_ty.clone()));
         }
         let ctpanel = egui::CentralPanel::default().show(ui.ctx(), |ui| {
             let rect = ui.clip_rect();
