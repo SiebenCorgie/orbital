@@ -281,24 +281,23 @@ impl OscillatorBank{
             }
         }
 
-        //now update
+        //we normalze "per voice"
         accumulated
     }
 
     //Fills the buffer with sound jo
-    pub fn process(&mut self, voices: &[OscVoiceState; OscillatorBank::VOICE_COUNT], buffer: &mut Buffer, sample_rate: f32, buffer_time_start: Time, buffer_time_length: Time){
-        let delta_sec = 1.0 / sample_rate;
+    pub fn process(&mut self, voices: &[OscVoiceState; OscillatorBank::VOICE_COUNT], buffer: &mut Buffer, sample_rate: f32, buffer_time_start: Time){
+        let delta_sec = (1.0 / sample_rate) as Time;
 
         let mut sample_time = buffer_time_start;
-        let mut sample_offset = 0.0;
         for mut sample in buffer.iter_samples(){
             let mut acc = 0.0;
             for vidx in 0..Self::VOICE_COUNT{
-                if voices[vidx].state.is_active(){
-                    let alpha = (sample_time.sin() + 1.0) / 2.0;
-                    let volume = lerp(0.0, 1.0, alpha as f32);
-                    acc += self.step(vidx, voices[vidx].freq, delta_sec as f32) * volume as f32;
+                if voices[vidx].state.is_off(){
+                    continue;
                 }
+                let volume = voices[vidx].env.sample(sample_time);
+                acc += self.step(vidx, voices[vidx].freq, delta_sec as f32) * volume as f32;
             }
 
             let val = acc;
@@ -306,8 +305,7 @@ impl OscillatorBank{
                 *csam = val;
             }
 
-            sample_offset += delta_sec;
-            sample_time += delta_sec as Time;
+            sample_time += delta_sec;
         }
     }
 }

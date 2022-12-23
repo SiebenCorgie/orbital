@@ -81,7 +81,7 @@ impl OscArray{
     pub fn note_on(&mut self, note: u8, at: Time){
         //search for an inactive voice and init.
         for v in &mut self.voices{
-            if !v.state.is_active(){
+            if v.state.is_off(){
                 v.state = VoiceState::On;
                 v.note = note;
                 v.freq = midi_note_to_freq(note);
@@ -100,14 +100,17 @@ impl OscArray{
         }
     }
 
-    pub fn process(&mut self, buffer: &mut Buffer, sample_rate: f32, buffer_time_start: Time, buffer_time_length: Time){
+    pub fn process(&mut self, buffer: &mut Buffer, sample_rate: f32, buffer_time_start: Time){
         //check each voice once if we can turn it off
         for v in &mut self.voices{
-            if v.state.is_released() && v.env.sample(buffer_time_start) <= 0.0{
+            if v.env.after_sampling(buffer_time_start){
                 v.state = VoiceState::Off;
+                v.env.reset();
+                v.freq = 0.0;
+                v.note = 0;
             }
         }
         //fire process
-        self.bank.process(&self.voices, buffer, sample_rate, buffer_time_start, buffer_time_length);
+        self.bank.process(&self.voices, buffer, sample_rate, buffer_time_start);
     }
 }

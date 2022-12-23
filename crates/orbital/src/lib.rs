@@ -150,8 +150,8 @@ impl Plugin for Orbital {
             self.transport_time += (buffer.len() / buffer.channels()) as f32  / context.transport().sample_rate;
         }*/
 
-        let buffer_length = (buffer.len() / buffer.channels()) as Time / context.transport().sample_rate as f64;
-
+        let buffer_length = buffer.len() as Time / context.transport().sample_rate as f64;
+        let sample_time = 1.0 / context.transport().sample_rate as Time;
         //try at most 10
         // TODO: check if we maybe should do that async
         for _try in 0..10{
@@ -176,14 +176,14 @@ impl Plugin for Orbital {
 
         while let Some(ev) = context.next_event(){
             match ev{
-                NoteEvent::NoteOn { note, .. } => self.synth.note_on(note, self.transport_time),
-                NoteEvent::NoteOff { note, .. } => self.synth.note_off(note, self.transport_time),
+                NoteEvent::NoteOn { note, timing, .. } => self.synth.note_on(note, self.transport_time + timing as Time * sample_time),
+                NoteEvent::NoteOff { note, timing, .. } => self.synth.note_off(note, self.transport_time + timing as Time * sample_time),
                 _ => {}
             }
         }
 
 
-        self.synth.process(buffer, context.transport().sample_rate, self.transport_time, buffer_length);
+        self.synth.process(buffer, context.transport().sample_rate, self.transport_time);
         //update time
         self.transport_time += buffer_length;
 

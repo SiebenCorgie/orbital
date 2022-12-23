@@ -14,7 +14,7 @@ pub struct EnvelopeParams{
 
 impl Default for EnvelopeParams{
     fn default() -> Self {
-        EnvelopeParams { delay: 0.0, attack: 0.1, hold: 0.1, decay: 0.1, sustain_level: 0.5, release: 0.1 }
+        EnvelopeParams { delay: 0.0, attack: 0.2, hold: 0.1, decay: 0.1, sustain_level: 0.8, release: 0.1 }
     }
 }
 
@@ -68,50 +68,62 @@ impl Envelope{
         self.release = Some(at);
     }
 
-    //walks the linear part until "at".
-    fn walk_to_linear(&self, mut at: Time) -> f32{
-        //the implementation actually "walks" through the stages until it
-        // is within a stage or exceeding. In the latter case we return 0 is release was set, or
-        // the sustain value.
+    pub fn reset(&mut self){
+        self.press = None;
+        self.release = None;
+    }
+    //steps the delay-attack-hold-decay chain until `at`. If at too big sustain is returned, if to small,
+    // 0.0 is returned
+    fn step_linear(&self, at: Time) -> f32{
         let start = if let Some(s) = self.press{
             s
         }else{
             return 0.0;
         };
 
-        //offset into "local" time, where start == 0;
-        at = at - start;
+        let mut local = at - start;
+        //short path to decay
+        if local > (self.parameters.delay + self.parameters.attack + self.parameters.hold + self.parameters.decay){
+            return self.parameters.sustain_level;
+        }
 
-        //check delay, if within just return zero. This also applies for instance if
-        // start is in the future.
-        if at < self.parameters.delay{
+        //also handles sub 0.0 local value
+        if local < self.parameters.delay{
             return 0.0;
         }else{
-            at -= self.parameters.delay;
+            local -= self.parameters.delay;
         }
 
-        //at attack, interpolate where on attack we are
-        if at < self.parameters.attack{
-            //calculate where on attack we are. Our attack is always 0..1, so this is simple interpolation
-            let alpha = at / self.parameters.attack;
-            return lerp(0.0, 1.0, alpha as f32);
-        }else {
-            at -= self.parameters.attack;
+        //if here, we are in attack probably
+        if local < self.parameters.attack{
+            let alpha = ((local / self.parameters.attack) as f32).clamp(0.0, 1.0);
+            return lerp(0.0, 1.0, alpha);
+        }else{
+            local -= self.parameters.attack;
         }
 
-        //on hold simply return 1.0
-        if at < self.parameters.hold{
+        //hat this point we are in hold
+        if local < self.parameters.hold{
             return 1.0;
         }else{
-            at -= self.parameters.hold;
+            local -= self.parameters.hold;
         }
 
-        //on decay interpolate between 1.0 and sustain level.
-        if at < self.parameters.decay{
-            let perc = at / self.parameters.decay;
-            lerp(1.0, self.parameters.sustain_level, perc as f32)
+        //going into decay
+        if local < self.parameters.decay{
+            let alpha = ((local / self.parameters.decay) as f32).clamp(0.0, 1.0);
+            return lerp(1.0, self.parameters.sustain_level, alpha);
+        }
+
+        //if not even here, we are actually in sustain
+        self.parameters.sustain_level
+    }
+
+    pub fn after_sampling(&self, at: Time) -> bool{
+        if let Some(end) = self.release{
+            (end + self.parameters.release) < at
         }else{
-            self.parameters.sustain_level as f32
+            false
         }
     }
 
@@ -122,27 +134,30 @@ impl Envelope{
     /// Note if no press event is set this will always return zero. But consider checking that case in your synth.
     pub fn sample(&self, at: Time) -> f32{
 
+        if self.press.is_none(){
+            return 0.0;
+        }
 
-        //if we have a release event we have to check if we are actually in the release part, if so,
-        // do not walk to "at", but the release event, then interpolate the "last" value to zero
-        if let Some(release_at) = self.release{
-            let release_part = at - release_at;
-            if release_part > 0.0{
-                //in decent
-                if release_part < self.parameters.release{
-                    let val_at_release = self.walk_to_linear(release_at);
-                    let normalized = release_part / self.parameters.release;
-                    lerp(val_at_release, 0.0, normalized as f32) as f32
-                }else{
-                    //already out of decent
-                    0.0
-                }
+        if let Some(release) = self.release{
+            //check where in release we are
+            let relo = at - release;
+            if relo < 0.0{
+                //not yet released, can happen at offsetted midi events
+                self.step_linear(at)
             }else{
-                //still in "normal" walk
-                self.walk_to_linear(at)
+                if relo > self.parameters.release{
+                    0.0
+                }else{
+                    //in release part
+                    //check value at release, then interpolate to 0.0
+                    let at_release = self.step_linear(release);
+                    let normalize = ((relo / self.parameters.release) as f32).clamp(0.0, 1.0);
+                    lerp(at_release, 0.0, normalize)
+                }
             }
         }else{
-            self.walk_to_linear(at)
+            //calc linearly walked
+            self.step_linear(at)
         }
     }
 }
