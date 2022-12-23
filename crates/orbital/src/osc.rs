@@ -282,7 +282,7 @@ impl OscillatorBank{
         }
 
         //we normalze "per voice"
-        accumulated
+        accumulated / div as f32
     }
 
     //Fills the buffer with sound jo
@@ -300,7 +300,7 @@ impl OscillatorBank{
                 acc += self.step(vidx, voices[vidx].freq, delta_sec as f32) * volume as f32;
             }
 
-            let val = acc;
+            let val = sigmoid(acc);
             for csam in sample.iter_mut(){
                 *csam = val;
             }
