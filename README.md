@@ -3,7 +3,7 @@
 # 🪐 Orbital 🪐
 
 A cosmic, polyphonic, additive FM synthesizer. 
-
+![Banner](res/banner.gif "Orbital")
 [![dependency status](https://deps.rs/repo/gitlab/tendsinmende/orbital/status.svg)](https://deps.rs/repo/gitlab/tendsinmende/orbital)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/L3L3F09W2)
 </div>
@@ -15,7 +15,7 @@ A cosmic, polyphonic, additive FM synthesizer.
 - Sample correct midi event offsets
 - 5 stage ADSR Midi-filter including: delay, attack, hold, decay, sustain level, release.
 - High quality sin based oscillators
-- 
+
 ## Planed features
 - Better voice addressing
 - Multiple voice composition options: currently all voices are mixed via a sigmoid which produces distortion when playing multiple high volume voices.
