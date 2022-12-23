@@ -3,13 +3,14 @@
 # 🪐 Orbital 🪐
 
 A cosmic, polyphonic, additive FM synthesizer. 
-![Banner](res/banner.gif "Orbital")
+
 [![dependency status](https://deps.rs/repo/gitlab/tendsinmende/orbital/status.svg)](https://deps.rs/repo/gitlab/tendsinmende/orbital)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/L3L3F09W2)
+
+![Banner](res/banner.gif "Orbital")
 </div>
 
 ## Features
-
 - Relative (to the oscillator frequency) and absolute frequency modulation: This allows you to either model interesting absolute soundscapes, or soundscapes that change relative to the currently played key.
 - Polyphony: Up to 10 concurrent voices.
 - Sample correct midi event offsets
@@ -20,9 +21,13 @@ A cosmic, polyphonic, additive FM synthesizer.
 - Better voice addressing
 - Multiple voice composition options: currently all voices are mixed via a sigmoid which produces distortion when playing multiple high volume voices.
 - SIMD implementation: Currently all oscillators in a bank are processed sequentially using sine waves. This produces a high quality result. The CPU load hover could be reduced dramatically if SIMD and, for lower frequencies a sine approximation was used.
+- Phase modulation and amplitude: Maybe let the user chose the type of modulation on a *per planet* basis.
+- UI improvements
+## Getting the plugin
+
+There are two ways: Either you use the build instructions below, or you write me on one of the platforms mentioned on [siebencorgie.rs](https://siebencorgie.rs) and I'll try to send you a recent version when I have time.
 
 ## Building 
-
 To build, install a [Rust toolchain and Cargo](https://www.rust-lang.org/). After that issue the following command in a terminal:
 
 ``` shell
@@ -31,7 +36,7 @@ cargo xtask bundle orbital --release
 
 This will build the VST3 and Clap version of the plugin in `target/bundled`.
 
-Now copy the desired plugin somewhere 
+Now copy the desired plugin somewhere your DAW can find it.
 
 
 ## License

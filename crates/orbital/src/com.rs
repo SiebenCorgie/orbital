@@ -1,4 +1,4 @@
-use crate::osc::OscType;
+use crate::{osc::{OscType, ModulationType}, envelope::EnvelopeParams};
 
 
 #[derive(Clone, Debug)]
@@ -20,4 +20,6 @@ pub struct SolarState{
 pub enum ComMsg{
     ///new solar state update
     SolarState(SolarState),
+    EnvChanged(EnvelopeParams),
+    ModRelationChanged(ModulationType)
 }

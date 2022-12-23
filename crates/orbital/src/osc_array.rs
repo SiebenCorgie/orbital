@@ -1,7 +1,7 @@
 use nih_plug::{prelude::Buffer, util::midi_note_to_freq};
 use serde::{Deserialize, Serialize};
 
-use crate::{osc::OscillatorBank, envelope::Envelope, Time};
+use crate::{osc::OscillatorBank, envelope::{Envelope, EnvelopeParams}, Time};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum VoiceState{
@@ -97,6 +97,12 @@ impl OscArray{
                 v.env.on_release(at);
                 v.state = VoiceState::Released;
             }
+        }
+    }
+
+    pub fn set_envelopes(&mut self, new: EnvelopeParams){
+        for v in &mut self.voices{
+            v.env.parameters = new.clone();
         }
     }
 

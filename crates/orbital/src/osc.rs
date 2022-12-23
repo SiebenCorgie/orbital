@@ -2,7 +2,7 @@ use nih_plug::{nih_error, prelude::{Buffer, Enum}};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::{com::{ComMsg, OrbitalState}, renderer::orbital::{TWOPI, Orbital}, osc_array::{OscVoiceState, VoiceState}, Time, envelope::lerp};
+use crate::{com::{ComMsg, OrbitalState, SolarState}, renderer::{orbital::{TWOPI, Orbital}, solar_system::SolarSystem}, osc_array::{OscVoiceState, VoiceState}, Time, envelope::lerp};
 
 pub fn sigmoid(x: f32) -> f32{
     x / (1.0 + x * x).sqrt()
@@ -192,26 +192,21 @@ impl OscillatorBank{
     ///Number of oscs in the bank
     pub const BANK_SIZE: usize = Self::VOICE_COUNT * Self::OSC_COUNT;
 
-    pub fn on_msg(&mut self, msg: ComMsg){
-        match msg {
-            ComMsg::SolarState(new_state) => {
+    pub fn on_state_change(&mut self, new: SolarState){
+        //turn off all to not keep anything "on" by misstake.
+        for o in &mut self.oscillators{
+            o.ty = OscType::Off;
+        }
 
-                //turn off all to not keep anything "on" by misstake.
-                for o in &mut self.oscillators{
-                    o.ty = OscType::Off;
-                }
-
-                //reconifg all oscs
-                // TODO: do diff and lerp between changes, reset on type change
-                for state in new_state.states.into_iter(){
-                    //set all oscillators on the line `idx` to the given state
-                    let OrbitalState { offset, ty, slot } = state;
-                    self.on_osc_line(slot, |osc|{
-                        osc.ty = ty;
-                        osc.offset = offset;
-                    });
-                }
-            },
+        //reconifg all oscs
+        // TODO: do diff and lerp between changes, reset on type change
+        for state in new.states.into_iter(){
+            //set all oscillators on the line `idx` to the given state
+            let OrbitalState { offset, ty, slot } = state;
+            self.on_osc_line(slot, |osc|{
+                osc.ty = ty;
+                osc.offset = offset;
+            });
         }
     }
 

@@ -2,14 +2,14 @@ use serde::{Serialize, Deserialize};
 
 use crate::Time;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct EnvelopeParams{
-    delay: Time,
-    attack: Time,
-    hold: Time,
-    decay: Time,
-    sustain_level: f32,
-    release: Time
+    pub delay: Time,
+    pub attack: Time,
+    pub hold: Time,
+    pub decay: Time,
+    pub sustain_level: f32,
+    pub release: Time
 }
 
 impl Default for EnvelopeParams{

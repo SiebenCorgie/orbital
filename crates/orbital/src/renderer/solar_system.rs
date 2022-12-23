@@ -115,15 +115,23 @@ impl SolarSystem{
         }
 
         //finally send update to audio buffer
-        let mut state_builder =  SolarState{
-            states: Vec::with_capacity(OscillatorBank::OSC_COUNT),
-        };
-        for orb in &self.orbitals{
-            orb.build_solar_state(&mut state_builder, None);
-        }
-
+        let mut state_builder = self.get_solar_state();
         //TODO handle breakdown
         let _ = coms.send(ComMsg::SolarState(state_builder));
+    }
+
+    //builds the solar state from the current state. Used mainly to init
+    // the synth when headless
+    pub fn get_solar_state(&self) -> SolarState{
+        let mut builder = SolarState{
+            states: Vec::with_capacity(OscillatorBank::BANK_SIZE)
+        };
+
+        for orb in &self.orbitals{
+            orb.build_solar_state(&mut builder, None);
+        }
+
+        builder
     }
 
     fn find_slot(&mut self) -> Option<usize>{
