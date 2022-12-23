@@ -1,8 +1,8 @@
 use std::{sync::Arc, time::Instant};
 
 use crossbeam::channel::Sender;
-use egui::{Response, ComboBox, Slider};
-use nih_plug_egui::{egui::{Widget, Sense}, widgets::ParamSlider};
+use egui::Slider;
+use nih_plug_egui::egui::{Widget, Sense};
 use crate::{OrbitalParams, com::ComMsg, osc::ModulationType, envelope::EnvelopeParams};
 
 use self::solar_system::SolarSystem;
@@ -87,8 +87,7 @@ impl Widget for &mut Renderer{
                             env_changed = true;
                         }
                     });
-                })
-
+                });
             })
         });
 

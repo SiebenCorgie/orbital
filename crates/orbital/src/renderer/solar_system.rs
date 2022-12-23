@@ -2,7 +2,6 @@ use std::time::Instant;
 
 use crossbeam::channel::Sender;
 use egui::{Painter, Response, epaint::CircleShape, Shape, Stroke, InputState, Key, PointerButton};
-use nih_plug::nih_log;
 use nih_plug_egui::egui::Pos2;
 use serde_derive::{Deserialize, Serialize};
 
@@ -114,10 +113,8 @@ impl SolarSystem{
             }
         }
 
-        //finally send update to audio buffer
-        let mut state_builder = self.get_solar_state();
         //TODO handle breakdown
-        let _ = coms.send(ComMsg::SolarState(state_builder));
+        let _ = coms.send(ComMsg::SolarState(self.get_solar_state()));
     }
 
     //builds the solar state from the current state. Used mainly to init

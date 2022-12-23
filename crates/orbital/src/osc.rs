@@ -1,8 +1,8 @@
-use nih_plug::{nih_error, prelude::{Buffer, Enum}};
+use nih_plug::prelude::{Buffer, Enum};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use crate::{com::{ComMsg, OrbitalState, SolarState}, renderer::{orbital::{TWOPI, Orbital}, solar_system::SolarSystem}, osc_array::{OscVoiceState, VoiceState}, Time, envelope::lerp};
+use crate::{com::{OrbitalState, SolarState}, renderer::orbital::{TWOPI, Orbital}, osc_array::OscVoiceState, Time};
 
 pub fn sigmoid(x: f32) -> f32{
     x / (1.0 + x * x).sqrt()
@@ -90,14 +90,6 @@ impl OscType{
 
             },
             OscType::Off => {0.0}
-        }
-    }
-
-    fn is_primary(&self) -> bool{
-        if let OscType::Primary {..} = self{
-            true
-        }else{
-            false
         }
     }
 

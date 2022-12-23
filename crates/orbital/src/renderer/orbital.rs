@@ -3,7 +3,7 @@ use nih_plug::nih_log;
 use nih_plug_egui::egui::{Painter, Color32, Stroke, Vec2, Pos2, Shape, epaint::CircleShape};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{com::{SolarState, OrbitalState}, osc::{OscType, mel_to_freq}};
+use crate::{com::{SolarState, OrbitalState}, osc::OscType};
 
 pub const TWOPI: f32 = 2.0 * PI;
 fn rotate_vec2(src: Vec2, angle: f32) -> Vec2{

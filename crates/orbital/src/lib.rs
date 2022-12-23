@@ -1,10 +1,9 @@
-use atomic_float::AtomicF32;
 use com::ComMsg;
 use crossbeam::channel::{Sender, Receiver, TryRecvError};
 use envelope::EnvelopeParams;
-use nih_plug::{prelude::*, params::persist, util::midi_note_to_freq};
-use nih_plug_egui::{create_egui_editor, egui::{self, Painter}, EguiState};
-use osc::{OscillatorBank, ModulationType};
+use nih_plug::{prelude::{Params, Plugin, MidiConfig, Editor, AsyncExecutor, BusConfig, BufferConfig, InitContext, Buffer, AuxiliaryBuffers, ProcessContext, ProcessStatus, NoteEvent, ClapPlugin, ClapFeature, Vst3Plugin}, nih_log, nih_error, nih_export_clap, nih_export_vst3};
+use nih_plug_egui::{create_egui_editor, EguiState};
+use osc::ModulationType;
 use osc_array::OscArray;
 use renderer::{Renderer, solar_system::SolarSystem};
 use std::sync::{Arc, Mutex};
@@ -15,9 +14,6 @@ mod osc;
 mod osc_array;
 mod com;
 mod envelope;
-
-/// The time it takes for the peak meter to decay by 12 dB after switching to complete silence.
-const PEAK_METER_DECAY_MS: f64 = 150.0;
 
 pub type Time = f64;
 
