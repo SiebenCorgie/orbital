@@ -183,7 +183,12 @@ impl Plugin for Orbital {
                 Ok(msg) => {
                     match msg {
                         ComMsg::SolarState(s) => self.synth.bank.on_state_change(s),
-                        ComMsg::ModRelationChanged(new) => self.synth.bank.mod_ty = new,
+                        ComMsg::ModRelationChanged(new) => {
+                            if let Ok(mut mr) = self.params.mod_ty.try_lock(){
+                                *mr = new.clone();
+                            }
+                            self.synth.bank.mod_ty = new
+                        },
                         //Note we only use the notify
                         ComMsg::EnvChanged(env_param) => {
                             if let Ok(mut p) = self.params.adsr.try_lock() {

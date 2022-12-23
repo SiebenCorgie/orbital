@@ -25,6 +25,7 @@ impl Widget for &mut Renderer {
             .lock()
             .map(|t| t.clone())
             .unwrap_or(ModulationType::Absolute);
+        let mut mod_ty_changed = false;
 
         let mut local_env: EnvelopeParams = self
             .params
@@ -40,22 +41,16 @@ impl Widget for &mut Renderer {
                 }
                 ui.vertical(|ui| {
                     ui.label("Modulation relation");
-                    if egui::ComboBox::from_id_source("modty")
+                    egui::ComboBox::from_id_source("modty")
                         .selected_text(format!("{:?}", mod_ty))
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut mod_ty, ModulationType::Absolute, "Absolute");
-                            ui.selectable_value(&mut mod_ty, ModulationType::Relative, "Relative");
+                            if ui.selectable_value(&mut mod_ty, ModulationType::Absolute, "Absolute").changed(){
+                                mod_ty_changed = true;
+                            }
+                            if ui.selectable_value(&mut mod_ty, ModulationType::Relative, "Relative").changed(){
+                                mod_ty_changed = true;
+                            }
                         })
-                        .response
-                        .changed()
-                    {
-                        let _ = self
-                            .msg_sender
-                            .try_send(ComMsg::ModRelationChanged(mod_ty.clone()));
-                        if let Ok(mut save_loc) = self.params.mod_ty.try_lock() {
-                            *save_loc = mod_ty;
-                        }
-                    };
                 });
 
                 ui.vertical(|ui| {
@@ -123,6 +118,9 @@ impl Widget for &mut Renderer {
 
         if env_changed {
             let _ = self.msg_sender.send(ComMsg::EnvChanged(local_env));
+        }
+        if mod_ty_changed{
+            let _ = self.msg_sender.send(ComMsg::ModRelationChanged(mod_ty.clone()));
         }
         let ctpanel = egui::CentralPanel::default().show(ui.ctx(), |ui| {
             let rect = ui.clip_rect();
