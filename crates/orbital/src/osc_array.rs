@@ -1,35 +1,39 @@
 use nih_plug::{prelude::Buffer, util::midi_note_to_freq};
 use serde::{Deserialize, Serialize};
 
-use crate::{osc::OscillatorBank, envelope::{Envelope, EnvelopeParams}, Time};
+use crate::{
+    envelope::{Envelope, EnvelopeParams},
+    osc::OscillatorBank,
+    Time,
+};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub enum VoiceState{
+pub enum VoiceState {
     Off,
     On,
     Released,
 }
 
-impl VoiceState{
-    pub fn is_off(&self) -> bool{
-        if let VoiceState::Off = &self{
+impl VoiceState {
+    pub fn is_off(&self) -> bool {
+        if let VoiceState::Off = &self {
             true
-        }else{
+        } else {
             false
         }
     }
-    pub fn is_released(&self) -> bool{
-        if let VoiceState::Released = &self{
+    pub fn is_released(&self) -> bool {
+        if let VoiceState::Released = &self {
             true
-        }else{
+        } else {
             false
         }
     }
 
-    pub fn is_active(&self) -> bool{
-        if let Self::Off = self{
+    pub fn is_active(&self) -> bool {
+        if let Self::Off = self {
             false
-        }else{
+        } else {
             true
         }
     }
@@ -37,7 +41,7 @@ impl VoiceState{
 
 ///Single banks state.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct OscVoiceState{
+pub struct OscVoiceState {
     //local voice's envelope state.
     pub env: Envelope,
     pub state: VoiceState,
@@ -61,27 +65,26 @@ impl Default for OscVoiceState {
 ///
 /// This is more or less *the synth*.
 #[derive(Serialize, Deserialize, Clone)]
-pub struct OscArray{
+pub struct OscArray {
     //all os
     pub bank: OscillatorBank,
     voices: [OscVoiceState; OscillatorBank::VOICE_COUNT],
 }
 
-impl Default for OscArray{
+impl Default for OscArray {
     fn default() -> Self {
         OscArray {
             bank: OscillatorBank::default(),
-            voices: [OscVoiceState::default(); OscillatorBank::VOICE_COUNT]
+            voices: [OscVoiceState::default(); OscillatorBank::VOICE_COUNT],
         }
     }
 }
 
-
-impl OscArray{
-    pub fn note_on(&mut self, note: u8, at: Time){
+impl OscArray {
+    pub fn note_on(&mut self, note: u8, at: Time) {
         //search for an inactive voice and init.
-        for v in &mut self.voices{
-            if v.state.is_off(){
+        for v in &mut self.voices {
+            if v.state.is_off() {
                 v.state = VoiceState::On;
                 v.note = note;
                 v.freq = midi_note_to_freq(note);
@@ -91,25 +94,25 @@ impl OscArray{
         }
     }
 
-    pub fn note_off(&mut self, note: u8, at: Time){
-        for v in &mut self.voices{
-            if v.note == note{
+    pub fn note_off(&mut self, note: u8, at: Time) {
+        for v in &mut self.voices {
+            if v.note == note {
                 v.env.on_release(at);
                 v.state = VoiceState::Released;
             }
         }
     }
 
-    pub fn set_envelopes(&mut self, new: EnvelopeParams){
-        for v in &mut self.voices{
+    pub fn set_envelopes(&mut self, new: EnvelopeParams) {
+        for v in &mut self.voices {
             v.env.parameters = new.clone();
         }
     }
 
-    pub fn process(&mut self, buffer: &mut Buffer, sample_rate: f32, buffer_time_start: Time){
+    pub fn process(&mut self, buffer: &mut Buffer, sample_rate: f32, buffer_time_start: Time) {
         //check each voice once if we can turn it off
-        for v in &mut self.voices{
-            if v.env.after_sampling(buffer_time_start){
+        for v in &mut self.voices {
+            if v.env.after_sampling(buffer_time_start) {
                 v.state = VoiceState::Off;
                 v.env.reset();
                 v.freq = 0.0;
@@ -117,6 +120,7 @@ impl OscArray{
             }
         }
         //fire process
-        self.bank.process(&self.voices, buffer, sample_rate, buffer_time_start);
+        self.bank
+            .process(&self.voices, buffer, sample_rate, buffer_time_start);
     }
 }

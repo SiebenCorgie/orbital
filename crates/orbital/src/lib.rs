@@ -1,19 +1,25 @@
 use com::ComMsg;
-use crossbeam::channel::{Sender, Receiver, TryRecvError};
+use crossbeam::channel::{Receiver, Sender, TryRecvError};
 use envelope::EnvelopeParams;
-use nih_plug::{prelude::{Params, Plugin, MidiConfig, Editor, AsyncExecutor, BusConfig, BufferConfig, InitContext, Buffer, AuxiliaryBuffers, ProcessContext, ProcessStatus, NoteEvent, ClapPlugin, ClapFeature, Vst3Plugin}, nih_log, nih_error, nih_export_clap, nih_export_vst3};
+use nih_plug::{
+    nih_error, nih_export_clap, nih_export_vst3, nih_log,
+    prelude::{
+        AsyncExecutor, AuxiliaryBuffers, Buffer, BufferConfig, BusConfig, ClapFeature, ClapPlugin,
+        Editor, InitContext, MidiConfig, NoteEvent, Params, Plugin, ProcessContext, ProcessStatus,
+        Vst3Plugin,
+    },
+};
 use nih_plug_egui::{create_egui_editor, EguiState};
 use osc::ModulationType;
 use osc_array::OscArray;
-use renderer::{Renderer, solar_system::SolarSystem};
+use renderer::{solar_system::SolarSystem, Renderer};
 use std::sync::{Arc, Mutex};
 
-
-mod renderer;
-mod osc;
-mod osc_array;
 mod com;
 mod envelope;
+mod osc;
+mod osc_array;
+mod renderer;
 
 pub type Time = f64;
 
@@ -120,26 +126,34 @@ impl Plugin for Orbital {
 
         //init synth to current state, or default
         self.synth.bank.on_state_change(
-            self
-                .params
+            self.params
                 .solar_system
                 .lock()
                 .map(|lck| lck.get_solar_state())
-                .unwrap_or(SolarSystem::new().get_solar_state())
+                .unwrap_or(SolarSystem::new().get_solar_state()),
         );
-        self.synth.set_envelopes(self.params.adsr.lock().map(|i| i.clone()).unwrap_or(EnvelopeParams::default()));
-        self.synth.bank.mod_ty = self.params.mod_ty.lock().map(|m| m.clone()).unwrap_or(ModulationType::Absolute);
+        self.synth.set_envelopes(
+            self.params
+                .adsr
+                .lock()
+                .map(|i| i.clone())
+                .unwrap_or(EnvelopeParams::default()),
+        );
+        self.synth.bank.mod_ty = self
+            .params
+            .mod_ty
+            .lock()
+            .map(|m| m.clone())
+            .unwrap_or(ModulationType::Absolute);
         true
     }
 
-
     fn deactivate(&mut self) {
-
         self.transport_time = 0.0;
         //feed back current parameter state
-        if let Ok(mut lck) = self.params.synth.lock(){
+        if let Ok(mut lck) = self.params.synth.lock() {
             *lck = self.synth.clone();
-        }else{
+        } else {
             nih_error!("Failed to serialize osc bank");
         }
     }
@@ -150,7 +164,6 @@ impl Plugin for Orbital {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-
         /*
         //advance time stamp either from daw time, or by counting buffer samples
         if let Some(stamp) = context.transport().pos_seconds(){
@@ -162,45 +175,49 @@ impl Plugin for Orbital {
 
         let buffer_length = buffer.len() as Time / context.transport().sample_rate as f64;
         let sample_time = 1.0 / context.transport().sample_rate as Time;
-        
+
         //try at most 10
         // TODO: check if we maybe should do that async
-        for _try in 0..10{
-            match self.com_channel.1.try_recv(){
+        for _try in 0..10 {
+            match self.com_channel.1.try_recv() {
                 Ok(msg) => {
-                    match msg{
+                    match msg {
                         ComMsg::SolarState(s) => self.synth.bank.on_state_change(s),
                         ComMsg::ModRelationChanged(new) => self.synth.bank.mod_ty = new,
                         //Note we only use the notify
                         ComMsg::EnvChanged(env_param) => {
-                            if let Ok(mut p) = self.params.adsr.try_lock(){
+                            if let Ok(mut p) = self.params.adsr.try_lock() {
                                 *p = env_param.clone();
                             }
                             self.synth.set_envelopes(env_param)
-                        },
+                        }
                     }
                 }
                 Err(e) => {
                     match e {
                         TryRecvError::Disconnected => {
                             nih_log!("com was disconnected!");
-                        },
+                        }
                         TryRecvError::Empty => break, //end recy loop for now
                     }
                 }
             }
         }
 
-        while let Some(ev) = context.next_event(){
-            match ev{
-                NoteEvent::NoteOn { note, timing, .. } => self.synth.note_on(note, self.transport_time + timing as Time * sample_time),
-                NoteEvent::NoteOff { note, timing, .. } => self.synth.note_off(note, self.transport_time + timing as Time * sample_time),
+        while let Some(ev) = context.next_event() {
+            match ev {
+                NoteEvent::NoteOn { note, timing, .. } => self
+                    .synth
+                    .note_on(note, self.transport_time + timing as Time * sample_time),
+                NoteEvent::NoteOff { note, timing, .. } => self
+                    .synth
+                    .note_off(note, self.transport_time + timing as Time * sample_time),
                 _ => {}
             }
         }
 
-
-        self.synth.process(buffer, context.transport().sample_rate, self.transport_time);
+        self.synth
+            .process(buffer, context.transport().sample_rate, self.transport_time);
         //update time
         self.transport_time += buffer_length;
 

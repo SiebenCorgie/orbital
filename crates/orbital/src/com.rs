@@ -1,8 +1,10 @@
-use crate::{osc::{OscType, ModulationType}, envelope::EnvelopeParams};
-
+use crate::{
+    envelope::EnvelopeParams,
+    osc::{ModulationType, OscType},
+};
 
 #[derive(Clone, Debug)]
-pub struct OrbitalState{
+pub struct OrbitalState {
     pub offset: f32,
     pub ty: OscType,
     //oscillator slot
@@ -10,16 +12,15 @@ pub struct OrbitalState{
 }
 
 #[derive(Clone, Debug)]
-pub struct SolarState{
-    pub states: Vec<OrbitalState>
+pub struct SolarState {
+    pub states: Vec<OrbitalState>,
 }
-
 
 ///Communication messages from the renderer to the oscillator bank.
 #[derive(Clone, Debug)]
-pub enum ComMsg{
+pub enum ComMsg {
     ///new solar state update
     SolarState(SolarState),
     EnvChanged(EnvelopeParams),
-    ModRelationChanged(ModulationType)
+    ModRelationChanged(ModulationType),
 }

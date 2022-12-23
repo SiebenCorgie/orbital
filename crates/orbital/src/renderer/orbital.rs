@@ -1,41 +1,49 @@
-use std::f32::consts::PI;
 use nih_plug::nih_log;
-use nih_plug_egui::egui::{Painter, Color32, Stroke, Vec2, Pos2, Shape, epaint::CircleShape};
+use nih_plug_egui::egui::{epaint::CircleShape, Color32, Painter, Pos2, Shape, Stroke, Vec2};
 use serde_derive::{Deserialize, Serialize};
+use std::f32::consts::PI;
 
-use crate::{com::{SolarState, OrbitalState}, osc::OscType};
+use crate::{
+    com::{OrbitalState, SolarState},
+    osc::OscType,
+};
 
 pub const TWOPI: f32 = 2.0 * PI;
-fn rotate_vec2(src: Vec2, angle: f32) -> Vec2{
+fn rotate_vec2(src: Vec2, angle: f32) -> Vec2 {
     let cos = angle.cos();
     let sin = angle.sin();
     let v = Vec2 {
-        x: src.x*cos - src.y*sin,
-        y: src.x*sin + src.y*cos
+        x: src.x * cos - src.y * sin,
+        y: src.x * sin + src.y * cos,
     };
 
     v
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub(super) enum ObjTy{
+pub(super) enum ObjTy {
     Sun,
     Planet,
     Moon,
-    Astroid
+    Astroid,
 }
 
-impl ObjTy{
+impl ObjTy {
     ///Paints self.
-    pub(super) fn pain(&self, center: Pos2, highlight: bool, painter: &Painter){
-        let mut shape = CircleShape{center, radius: self.radius(), stroke: Stroke::none(), fill: self.color()};
-        if highlight{
+    pub(super) fn pain(&self, center: Pos2, highlight: bool, painter: &Painter) {
+        let mut shape = CircleShape {
+            center,
+            radius: self.radius(),
+            stroke: Stroke::none(),
+            fill: self.color(),
+        };
+        if highlight {
             shape.stroke = Stroke::new(Orbital::ORBIT_LINE_FAT, Color32::WHITE);
         }
         painter.add(Shape::Circle(shape));
     }
 
-    pub(super) fn color(&self) -> Color32{
+    pub(super) fn color(&self) -> Color32 {
         match self {
             ObjTy::Sun => Color32::LIGHT_YELLOW,
             ObjTy::Astroid => Color32::LIGHT_RED,
@@ -44,78 +52,84 @@ impl ObjTy{
         }
     }
 
-    pub(super) fn lower(&self) -> Self{
+    pub(super) fn lower(&self) -> Self {
         match self {
             ObjTy::Sun => ObjTy::Planet,
             ObjTy::Planet => ObjTy::Moon,
             ObjTy::Moon => ObjTy::Astroid,
-            ObjTy::Astroid => ObjTy::Astroid
+            ObjTy::Astroid => ObjTy::Astroid,
         }
     }
 
-    pub(super) fn radius(&self) -> f32{
+    pub(super) fn radius(&self) -> f32 {
         match self {
             ObjTy::Sun => 22.0,
             ObjTy::Planet => 12.5,
             ObjTy::Moon => 9.5,
-            ObjTy::Astroid => 7.0
+            ObjTy::Astroid => 7.0,
         }
     }
 
-    pub fn is_secondary(&self) -> bool{
+    pub fn is_secondary(&self) -> bool {
         match self {
             ObjTy::Sun | ObjTy::Planet => false,
-            _ => true
+            _ => true,
         }
     }
 
-    pub fn max_orbit(&self) -> f32{
-        if self.is_secondary(){Orbital::MAX_ORBIT_SEC}else{Orbital::MAX_ORBIT_PRIM}
+    pub fn max_orbit(&self) -> f32 {
+        if self.is_secondary() {
+            Orbital::MAX_ORBIT_SEC
+        } else {
+            Orbital::MAX_ORBIT_PRIM
+        }
     }
 }
 
 #[derive(Clone)]
-enum Interaction{
+enum Interaction {
     ///Child being dragged out
-    DragNewChild{
+    DragNewChild {
         slot: usize,
         obj: ObjTy,
         //Location the "drag" event is currently at
-        at: Pos2
+        at: Pos2,
     },
-    DragPlanet{
-        at: Pos2
+    DragPlanet {
+        at: Pos2,
     },
-    DragOrbit{
-        at: Pos2
+    DragOrbit {
+        at: Pos2,
     },
-    None
+    None,
 }
 
-impl Default for Interaction{
+impl Default for Interaction {
     fn default() -> Self {
         Interaction::None
     }
 }
 
-impl Interaction{
-    fn set_location(&mut self, to: Pos2){
+impl Interaction {
+    fn set_location(&mut self, to: Pos2) {
         match self {
-            Interaction::DragNewChild { slot: _, obj: _, at } => {
+            Interaction::DragNewChild {
+                slot: _,
+                obj: _,
+                at,
+            } => {
                 *at = to;
-            },
+            }
             Interaction::DragPlanet { at } => *at = to,
-            Interaction::DragOrbit { at } => {
-                *at = to
-            },
+            Interaction::DragOrbit { at } => *at = to,
             Interaction::None => {}
         }
     }
 
-    fn is_none(&self) -> bool{
-        if let Interaction::None = self{
+    fn is_none(&self) -> bool {
+        if let Interaction::None = self {
             true
-        }else{
+        } else {
             false
         }
     }
@@ -123,7 +137,7 @@ impl Interaction{
 
 ///Object in an orbit
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Orbital{
+pub struct Orbital {
     //center of orbit, usually parents location or
     // center of frame
     center: Pos2,
@@ -149,8 +163,7 @@ pub struct Orbital{
     children: Vec<Orbital>,
 }
 
-impl Orbital{
-
+impl Orbital {
     const HANDLE_WIDTH: f32 = 5.0;
     const OBJSIZE: f32 = 10.0;
 
@@ -159,15 +172,14 @@ impl Orbital{
     const MIN_ORBIT: f32 = 25.0;
     const MAX_ORBIT_SEC: f32 = 100.0;
     const MAX_ORBIT_PRIM: f32 = 300.0;
-    const ZERO_SHIFT: Vec2 = Vec2{x: 0.0, y: -1.0};
+    const ZERO_SHIFT: Vec2 = Vec2 { x: 0.0, y: -1.0 };
     ///Multplier used to scale the `speed` value to mel. The mel scale reaches 10k Hz @
     /// around 3.6k mel. This means a speed value of 1.0 is ~2.5k Hz.
     pub const MEL_MULTIPLIER: f32 = 10.0;
 
     const SPEED_SCROLL_MULTIPLIER: f32 = 0.1;
 
-    pub fn new_primary(at: Pos2, center: Pos2, slot: usize) -> Self{
-
+    pub fn new_primary(at: Pos2, center: Pos2, slot: usize) -> Self {
         let radius = (at - center).length();
         //find angle in a way that it is placed at this location.
         let offset = 0.0;
@@ -184,7 +196,7 @@ impl Orbital{
             obj: ObjTy::Planet,
             interaction: Interaction::None,
             osc_slot: slot,
-            children: Vec::new()
+            children: Vec::new(),
         };
 
         new_orb.offset_to(at);
@@ -192,21 +204,21 @@ impl Orbital{
         new_orb
     }
 
-    pub fn paint(&self, painter: &Painter){
+    pub fn paint(&self, painter: &Painter) {
         //paint orbit
-        painter.add(Shape::Circle(CircleShape{
+        painter.add(Shape::Circle(CircleShape {
             radius: self.radius,
             center: self.center,
             stroke: Stroke::new(self.orbit_width, Color32::WHITE),
-            fill: Color32::TRANSPARENT
+            fill: Color32::TRANSPARENT,
         }));
 
-        for c in &self.children{
+        for c in &self.children {
             c.paint(painter);
         }
 
         //if currently dragging out a new one, draw that
-        if let Interaction::DragNewChild { slot, obj, at } = &self.interaction{
+        if let Interaction::DragNewChild { slot, obj, at } = &self.interaction {
             //build a temp object and paint that
             let mut tmp = Orbital::new_primary(*at, self.obj_pos(), *slot);
             tmp.obj = *obj;
@@ -214,25 +226,27 @@ impl Orbital{
             tmp.paint(painter);
         }
 
-        self.obj.pain(self.obj_pos(), self.planet_highlight, painter);
+        self.obj
+            .pain(self.obj_pos(), self.planet_highlight, painter);
     }
 
-    fn obj_pos(&self) -> Pos2{
-        self.center + rotate_vec2(Self::ZERO_SHIFT, (self.offset + self.phase) % TWOPI) * self.radius
+    fn obj_pos(&self) -> Pos2 {
+        self.center
+            + rotate_vec2(Self::ZERO_SHIFT, (self.offset + self.phase) % TWOPI) * self.radius
     }
-
 
     ///Offsets self in a way that it is as close as possible to `look_at`.
-    fn offset_to(&mut self, look_at: Pos2){
-
+    fn offset_to(&mut self, look_at: Pos2) {
         let angle = {
             //we currently do that by shifting origin to center, constructing the "zero shift" vector and the
             // "to at" vector and getting the angle between those.
             let at_prime = look_at - self.center;
-            let angle = (Self::ZERO_SHIFT.dot(at_prime) / (at_prime.length() * Self::ZERO_SHIFT.length())).acos();
-            if look_at.x < self.center.x{
+            let angle = (Self::ZERO_SHIFT.dot(at_prime)
+                / (at_prime.length() * Self::ZERO_SHIFT.length()))
+            .acos();
+            if look_at.x < self.center.x {
                 TWOPI - angle
-            }else{
+            } else {
                 angle
             }
         };
@@ -243,7 +257,7 @@ impl Orbital{
     pub fn update(&mut self, delta: f32) {
         self.phase = (self.phase + (self.speed * delta)) % TWOPI;
         let new_loc = self.obj_pos();
-        for c in &mut self.children{
+        for c in &mut self.children {
             //forward update center...
             c.center = new_loc;
             //..then call inner update
@@ -251,13 +265,17 @@ impl Orbital{
         }
     }
 
-    pub fn on_drag_start(&mut self, at: Pos2, slot: usize) -> bool{
-        let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at)){
+    pub fn on_drag_start(&mut self, at: Pos2, slot: usize) -> bool {
+        let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at)) {
             (false, true) => {
                 //drag start on planet, start dragging out a child
-                self.interaction = Interaction::DragNewChild { slot, obj: self.obj.lower(), at };
+                self.interaction = Interaction::DragNewChild {
+                    slot,
+                    obj: self.obj.lower(),
+                    at,
+                };
                 true
-            },
+            }
             (true, true) => {
                 self.interaction = Interaction::DragPlanet { at };
                 self.phase = 0.0;
@@ -267,16 +285,14 @@ impl Orbital{
                 //dragging orbit, change orbit radius
                 self.interaction = Interaction::DragOrbit { at };
                 true
-            },
-            _ => {
-                false
             }
+            _ => false,
         };
 
         //if unused, recurse
-        if !used{
-            for c in &mut self.children{
-                if c.on_drag_start(at, slot){
+        if !used {
+            for c in &mut self.children {
+                if c.on_drag_start(at, slot) {
                     return true;
                 }
             }
@@ -286,34 +302,34 @@ impl Orbital{
     }
 
     ///handles a drag event. Used with drag_start and release. Returns true if it was used
-    pub fn on_drag(&mut self, drag_to: Pos2) -> bool{
-        if !self.interaction.is_none(){
+    pub fn on_drag(&mut self, drag_to: Pos2) -> bool {
+        if !self.interaction.is_none() {
             self.interaction.set_location(drag_to);
 
             //if we are dragging the orbit, or the planet, update base location.
-            match self.interaction{
+            match self.interaction {
                 Interaction::DragOrbit { at } => {
                     let new_rad = (self.center.to_vec2() - at.to_vec2()).length();
                     self.radius = new_rad.clamp(Self::MIN_ORBIT, self.obj.max_orbit());
                     let new_center = self.obj_pos();
-                    for c in &mut self.children{
+                    for c in &mut self.children {
                         c.update_center(new_center);
                     }
                 }
                 Interaction::DragPlanet { at } => {
                     self.offset_to(at);
                     let new_center = self.obj_pos();
-                    for c in &mut self.children{
+                    for c in &mut self.children {
                         c.update_center(new_center);
                     }
-                },
+                }
                 _ => {}
             }
 
             true
-        }else{
-            for c in &mut self.children{
-                if c.on_drag(drag_to){
+        } else {
+            for c in &mut self.children {
+                if c.on_drag(drag_to) {
                     return true;
                 }
             }
@@ -321,8 +337,8 @@ impl Orbital{
         }
     }
 
-    pub fn on_drag_end(&mut self){
-        if !self.interaction.is_none(){
+    pub fn on_drag_end(&mut self) {
+        if !self.interaction.is_none() {
             match &self.interaction {
                 Interaction::DragNewChild { slot, obj, at } => {
                     nih_log!("adding {:?} @ {}", obj, slot);
@@ -331,10 +347,10 @@ impl Orbital{
                     child.obj = *obj;
                     self.children.push(child);
                     self.interaction = Interaction::None;
-                },
+                }
                 Interaction::DragOrbit { at: _ } => {
                     self.interaction = Interaction::None;
-                },
+                }
                 Interaction::DragPlanet { at: _ } => {
                     self.interaction = Interaction::None;
                 }
@@ -343,54 +359,54 @@ impl Orbital{
         }
 
         //always pass release event down
-        for c in &mut self.children{
+        for c in &mut self.children {
             c.on_drag_end();
         }
-
     }
 
-    pub fn on_scroll(&mut self, delta: f32, at: Pos2){
-        if self.is_on_orbit_handle(at){
-            self.speed = if delta < 0.0{
+    pub fn on_scroll(&mut self, delta: f32, at: Pos2) {
+        if self.is_on_orbit_handle(at) {
+            self.speed = if delta < 0.0 {
                 self.speed * (1.0 - Self::SPEED_SCROLL_MULTIPLIER)
-            }else{
+            } else {
                 self.speed * (1.0 + Self::SPEED_SCROLL_MULTIPLIER)
             };
         }
-        for c in &mut self.children{
+        for c in &mut self.children {
             c.on_scroll(delta, at);
         }
     }
 
-    fn update_center(&mut self, new_center: Pos2){
+    fn update_center(&mut self, new_center: Pos2) {
         self.center = new_center;
         let new_child_center = self.obj_pos();
-        for c in &mut self.children{
+        for c in &mut self.children {
             c.update_center(new_child_center);
         }
     }
 
-    fn is_on_orbit_handle(&self, loc: Pos2) -> bool{
-        let handle_rad = (loc-self.center).length();
-        handle_rad > (self.radius - Self::HANDLE_WIDTH) && handle_rad < (self.radius + Self::HANDLE_WIDTH)
+    fn is_on_orbit_handle(&self, loc: Pos2) -> bool {
+        let handle_rad = (loc - self.center).length();
+        handle_rad > (self.radius - Self::HANDLE_WIDTH)
+            && handle_rad < (self.radius + Self::HANDLE_WIDTH)
     }
 
-    fn is_on_planet(&self, loc: Pos2) -> bool{
+    fn is_on_planet(&self, loc: Pos2) -> bool {
         //TODO currently calculating "left side" on
         let pos = self.obj_pos();
 
-        let rad = (loc-pos).length();
+        let rad = (loc - pos).length();
         rad < (Self::OBJSIZE + Self::HANDLE_WIDTH)
     }
 
     //checks if self should be deleted
-    pub fn on_delete(&mut self, at: Pos2) -> bool{
-        if self.is_on_orbit_handle(at) || self.is_on_planet(at){
+    pub fn on_delete(&mut self, at: Pos2) -> bool {
+        if self.is_on_orbit_handle(at) || self.is_on_planet(at) {
             true
-        }else{
+        } else {
             //reverse through children, delete all that report it
-            for i in (0..self.children.len()).rev(){
-                if self.children[i].on_delete(at){
+            for i in (0..self.children.len()).rev() {
+                if self.children[i].on_delete(at) {
                     self.children.remove(i);
                 }
             }
@@ -400,18 +416,17 @@ impl Orbital{
     }
 
     ///Notifies that cursor is hovering, returns true if hovering over anything interactable.
-    pub fn on_hover(&mut self, at: Pos2) -> bool{
-
+    pub fn on_hover(&mut self, at: Pos2) -> bool {
         let mut is_interactable = false;
         //only add hover effect if not dragging already
-        if self.interaction.is_none(){
+        if self.interaction.is_none() {
             //if hovering over our orbit, thicken line
-            match (self.is_on_orbit_handle(at), self.is_on_planet(at)){
+            match (self.is_on_orbit_handle(at), self.is_on_planet(at)) {
                 (false, false) => {
                     //reset orbit render width
                     self.orbit_width = Self::ORBIT_LINE_WIDTH;
                     self.planet_highlight = false;
-                },
+                }
                 (true, true) => {
                     self.planet_highlight = true;
                     self.orbit_width = Self::ORBIT_LINE_FAT;
@@ -421,7 +436,7 @@ impl Orbital{
                     //only on orbit, widen orbit line
                     self.orbit_width = Self::ORBIT_LINE_FAT;
                     self.planet_highlight = false;
-                },
+                }
                 (_, true) => {
                     //on planet, preffer over orbit.
                     self.orbit_width = Self::ORBIT_LINE_WIDTH;
@@ -431,19 +446,19 @@ impl Orbital{
             }
         }
 
-        for c in &mut self.children{
+        for c in &mut self.children {
             is_interactable |= c.on_hover(at);
         }
         is_interactable
     }
 
-    pub fn slot_take(&self, slot: usize) -> bool{
-        if self.osc_slot == slot{
-            return true
+    pub fn slot_take(&self, slot: usize) -> bool {
+        if self.osc_slot == slot {
+            return true;
         }
 
-        for c in &self.children{
-            if c.slot_take(slot){
+        for c in &self.children {
+            if c.slot_take(slot) {
                 return true;
             }
         }
@@ -452,31 +467,31 @@ impl Orbital{
     }
 
     ///appends self and the children to the state, returns the index self was added at
-    pub fn build_solar_state(&self, builder: &mut SolarState, parent_slot: Option<usize>){
-        let ty = if let Some(slot) = parent_slot{
+    pub fn build_solar_state(&self, builder: &mut SolarState, parent_slot: Option<usize>) {
+        let ty = if let Some(slot) = parent_slot {
             let dist = self.radius - Self::MIN_ORBIT;
             //linear blend in orbit range
             let range = dist / (self.obj.max_orbit() - Self::MIN_ORBIT);
-            OscType::Modulator{
+            OscType::Modulator {
                 parent_osc_slot: slot,
                 speed: self.speed,
                 range: range.clamp(0.0, 1.0),
             }
-        }else{
+        } else {
             let volume = self.radius / (self.obj.max_orbit() - Self::MIN_ORBIT);
-            OscType::Primary{
+            OscType::Primary {
                 base_multiplier: self.speed,
-                volume
+                volume,
             }
         };
         //Push self
         builder.states.push(OrbitalState {
             offset: self.offset,
             ty,
-            slot: self.osc_slot
+            slot: self.osc_slot,
         });
 
-        if let Interaction::DragNewChild { slot, obj, at } = &self.interaction{
+        if let Interaction::DragNewChild { slot, obj, at } = &self.interaction {
             //add new child already so we can hear it.
             let mut tmp = Orbital::new_primary(*at, self.obj_pos(), *slot);
             tmp.obj = *obj;
@@ -485,7 +500,7 @@ impl Orbital{
         }
 
         //do same with children
-        for c in &self.children{
+        for c in &self.children {
             c.build_solar_state(builder, Some(self.osc_slot));
         }
     }

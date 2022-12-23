@@ -1,20 +1,27 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::Time;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub struct EnvelopeParams{
+pub struct EnvelopeParams {
     pub delay: Time,
     pub attack: Time,
     pub hold: Time,
     pub decay: Time,
     pub sustain_level: f32,
-    pub release: Time
+    pub release: Time,
 }
 
-impl Default for EnvelopeParams{
+impl Default for EnvelopeParams {
     fn default() -> Self {
-        EnvelopeParams { delay: 0.0, attack: 0.2, hold: 0.1, decay: 0.1, sustain_level: 0.8, release: 0.1 }
+        EnvelopeParams {
+            delay: 0.0,
+            attack: 0.2,
+            hold: 0.1,
+            decay: 0.1,
+            sustain_level: 0.8,
+            release: 0.1,
+        }
     }
 }
 
@@ -40,13 +47,13 @@ impl Default for EnvelopeParams{
 ///  | press event               | release event
 /// ```
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct Envelope{
+pub struct Envelope {
     pub press: Option<Time>,
     pub release: Option<Time>,
     pub parameters: EnvelopeParams,
 }
 
-impl Default for Envelope{
+impl Default for Envelope {
     fn default() -> Self {
         Envelope {
             press: None,
@@ -56,61 +63,66 @@ impl Default for Envelope{
     }
 }
 
-impl Envelope{
+impl Envelope {
     ///sets the press event `at` the given time, resets the release event.
-    pub fn on_press(&mut self, at: Time){
+    pub fn on_press(&mut self, at: Time) {
         self.press = Some(at);
         self.release = None;
     }
 
     ///Sets release event `at` the given time. From now on if you sample after `at` you'll be in the release region.
-    pub fn on_release(&mut self, at: Time){
+    pub fn on_release(&mut self, at: Time) {
         self.release = Some(at);
     }
 
-    pub fn reset(&mut self){
+    pub fn reset(&mut self) {
         self.press = None;
         self.release = None;
     }
     //steps the delay-attack-hold-decay chain until `at`. If at too big sustain is returned, if to small,
     // 0.0 is returned
-    fn step_linear(&self, at: Time) -> f32{
-        let start = if let Some(s) = self.press{
+    fn step_linear(&self, at: Time) -> f32 {
+        let start = if let Some(s) = self.press {
             s
-        }else{
+        } else {
             return 0.0;
         };
 
         let mut local = at - start;
         //short path to decay
-        if local > (self.parameters.delay + self.parameters.attack + self.parameters.hold + self.parameters.decay){
+        if local
+            > (self.parameters.delay
+                + self.parameters.attack
+                + self.parameters.hold
+                + self.parameters.decay)
+        {
             return self.parameters.sustain_level;
         }
 
         //also handles sub 0.0 local value
-        if local < self.parameters.delay{
+        if local < self.parameters.delay {
             return 0.0;
-        }else{
+        } else {
             local -= self.parameters.delay;
         }
 
         //if here, we are in attack probably
-        if local < self.parameters.attack{
+        if local < self.parameters.attack {
             let alpha = ((local / self.parameters.attack) as f32).clamp(0.0, 1.0);
             return lerp(0.0, 1.0, alpha);
-        }else{
+        } else {
             local -= self.parameters.attack;
         }
 
         //hat this point we are in hold
-        if local < self.parameters.hold{
+        if local < self.parameters.hold {
             return 1.0;
-        }else{
+        } else {
             local -= self.parameters.hold;
         }
 
         //going into decay
-        if local < self.parameters.decay{
+        if local < self.parameters.decay {
             let alpha = ((local / self.parameters.decay) as f32).clamp(0.0, 1.0);
             return lerp(1.0, self.parameters.sustain_level, alpha);
         }
@@ -119,10 +131,10 @@ impl Envelope{
         self.parameters.sustain_level
     }
 
-    pub fn after_sampling(&self, at: Time) -> bool{
-        if let Some(end) = self.release{
+    pub fn after_sampling(&self, at: Time) -> bool {
+        if let Some(end) = self.release {
             (end + self.parameters.release) < at
-        }else{
+        } else {
             false
         }
     }
@@ -132,22 +144,21 @@ impl Envelope{
     /// since `at` is still in the decay range at that point.
     ///
     /// Note if no press event is set this will always return zero. But consider checking that case in your synth.
-    pub fn sample(&self, at: Time) -> f32{
-
-        if self.press.is_none(){
+    pub fn sample(&self, at: Time) -> f32 {
+        if self.press.is_none() {
             return 0.0;
         }
 
-        if let Some(release) = self.release{
+        if let Some(release) = self.release {
             //check where in release we are
             let relo = at - release;
-            if relo < 0.0{
+            if relo < 0.0 {
                 //not yet released, can happen at offsetted midi events
                 self.step_linear(at)
-            }else{
-                if relo > self.parameters.release{
+            } else {
+                if relo > self.parameters.release {
                     0.0
-                }else{
+                } else {
                     //in release part
                     //check value at release, then interpolate to 0.0
                     let at_release = self.step_linear(release);
@@ -155,14 +166,13 @@ impl Envelope{
                     lerp(at_release, 0.0, normalize)
                 }
             }
-        }else{
+        } else {
             //calc linearly walked
             self.step_linear(at)
         }
     }
 }
 
-
-pub fn lerp(a: f32, b: f32, alpha: f32) -> f32{
-    (b * alpha) + (a * (1.0-alpha))
+pub fn lerp(a: f32, b: f32, alpha: f32) -> f32 {
+    (b * alpha) + (a * (1.0 - alpha))
 }
