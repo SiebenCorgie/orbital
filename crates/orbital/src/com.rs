@@ -5,6 +5,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct OrbitalState {
+    ///Phase offset of this orbital
     pub offset: f32,
     pub ty: OscType,
     //oscillator slot
