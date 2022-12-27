@@ -96,7 +96,7 @@ impl OscArray {
 
     pub fn note_off(&mut self, note: u8, at: Time) {
         for v in &mut self.voices {
-            if v.note == note {
+            if v.note == note && !v.state.is_off() {
                 v.env.on_release(at);
                 v.state = VoiceState::Released;
             }
