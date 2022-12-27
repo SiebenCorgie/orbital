@@ -52,21 +52,21 @@ impl Widget for &mut AdsrGui{
 }
 
 
-pub struct Knob<'a>{
-    pub value: &'a mut f32,
+pub struct Knob<'a, T>{
+    pub value: &'a mut T,
     //rectangel
     pub size: f32,
-    pub min: f32,
-    pub max: f32
+    pub min: T,
+    pub max: T
 }
 
-impl<'a> Knob<'a>{
-    pub fn new(value: &'a mut f32) -> Self{
+impl<'a, T> Knob<'a, T>{
+    pub fn new(value: &'a mut T, min: T, max: T) -> Self{
         Knob {
             value,
             size: 50.0,
-            min: 0.0,
-            max: 1.0
+            min,
+            max
         }
     }
 
@@ -75,12 +75,12 @@ impl<'a> Knob<'a>{
         self
     }
 
-    pub fn with_range(mut self, min: f32, max: f32) -> Self{
-        self.min = min;
-        self.max = max;
-        self
+    fn offset(&self) -> f32{
+        (self.size / 2.0) - 5.0
     }
+}
 
+impl<'a> Knob<'a, f32> {
     fn angle_to_value(&self, angle: f32) -> f32{
         let perc = angle / TWOPI;
         self.min + ((self.max - self.min) * perc)
@@ -90,15 +90,11 @@ impl<'a> Knob<'a>{
         let perc = (val - self.min) / (self.max - self.min);
         (TWOPI * perc).clamp(0.0, TWOPI)
     }
-
-    fn offset(&self) -> f32{
-        (self.size / 2.0) - 5.0
-    }
 }
 
-impl<'a> Widget for Knob<'a>{
+impl<'a> Widget for Knob<'a, f32>{
     fn ui(self, ui: &mut egui::Ui) -> Response {
-        let (resp, painter) = ui.allocate_painter(Vec2::splat(self.size), Sense::click_and_drag());
+        let (mut resp, painter) = ui.allocate_painter(Vec2::splat(self.size), Sense::click_and_drag());
         let rect = painter.clip_rect();
         let knob_offset = self.offset();
 
@@ -118,7 +114,13 @@ impl<'a> Widget for Knob<'a>{
                 };
 
                 *self.value = self.angle_to_value(angle);
+                resp.mark_changed();
             }
+        }
+
+        if resp.clicked(){
+            *self.value = self.min;
+            resp.mark_changed();
         }
 
         painter.circle(rect.center(), knob_offset, Color32::TRANSPARENT, Stroke::new(1.0, Color32::LIGHT_GRAY));
@@ -126,7 +128,58 @@ impl<'a> Widget for Knob<'a>{
         painter.circle(rect.center() + at, 2.0, Color32::WHITE, Stroke::none());
         painter.line_segment([rect.center_bottom(), rect.center_bottom() - Vec2{x: 0.0, y: 10.0}], Stroke::new(1.0, Color32::WHITE));
         painter.text(rect.center(), Align2::CENTER_CENTER, format!("{:.2}", self.value), FontId::default(), Color32::WHITE);
+        resp
+    }
+}
 
+impl<'a> Knob<'a, f64> {
+    fn angle_to_value(&self, angle: f32) -> f64{
+        let perc = angle / TWOPI;
+        self.min + ((self.max - self.min) * perc as f64)
+    }
+
+    fn value_to_angle(&self, val: f64) -> f32{
+        let perc = ((val - self.min) / (self.max - self.min)) as f32;
+        (TWOPI * perc).clamp(0.0, TWOPI)
+    }
+}
+
+impl<'a> Widget for Knob<'a, f64>{
+    fn ui(self, ui: &mut egui::Ui) -> Response {
+        let (mut resp, painter) = ui.allocate_painter(Vec2::splat(self.size), Sense::click_and_drag());
+        let rect = painter.clip_rect();
+        let knob_offset = self.offset();
+
+        //find the location and update the value
+        if resp.dragged(){
+            if let Some(at) = ui.input().pointer.interact_pos(){
+                let at_prime = at - rect.center();
+                let angle = (Vec2::Y.dot(at_prime)
+                             / (at_prime.length() * 1.0))
+                    .acos();
+
+                let angle = if at.x < rect.center().x {
+                    //TWOPI - angle
+                    angle
+                } else {
+                    TWOPI - angle
+                };
+
+                *self.value = self.angle_to_value(angle);
+                resp.mark_changed();
+            }
+        }
+
+        if resp.clicked(){
+            *self.value = self.min;
+            resp.mark_changed();
+        }
+
+        painter.circle(rect.center(), knob_offset, Color32::TRANSPARENT, Stroke::new(1.0, Color32::LIGHT_GRAY));
+        let at = rotate_vec2(Vec2::Y * knob_offset, self.value_to_angle(*self.value));
+        painter.circle(rect.center() + at, 2.0, Color32::WHITE, Stroke::none());
+        painter.line_segment([rect.center_bottom(), rect.center_bottom() - Vec2{x: 0.0, y: 10.0}], Stroke::new(1.0, Color32::WHITE));
+        painter.text(rect.center(), Align2::CENTER_CENTER, format!("{:.2}", self.value), FontId::default(), Color32::WHITE);
         resp
     }
 }

@@ -64,8 +64,40 @@ impl Widget for &mut Renderer {
                 });
 
                 ui.vertical(|ui|{
-                    ui.add(Knob::new(&mut local_env.sustain_level));
+                    if ui.add(Knob::new(&mut local_env.delay, 0.0, 1.0)).changed(){
+                        env_changed = true;
+                    }
+                    ui.label("Delay");
+                });
+                ui.vertical(|ui|{
+                    if ui.add(Knob::new(&mut local_env.attack, 0.0, 1.0)).changed(){
+                        env_changed = true;
+                    }
+                    ui.label("Attack");
+                });
+                ui.vertical(|ui|{
+                    if ui.add(Knob::new(&mut local_env.hold, 0.0, 1.0)).changed(){
+                        env_changed = true;
+                    }
+                    ui.label("Hold");
+                });
+                ui.vertical(|ui|{
+                    if ui.add(Knob::new(&mut local_env.decay, 0.0, 1.0)).changed(){
+                        env_changed = true;
+                    }
+                    ui.label("Decay");
+                });
+                ui.vertical(|ui|{
+                    if ui.add(Knob::new(&mut local_env.sustain_level, 0.0, 1.0)).changed(){
+                        env_changed = true;
+                    }
                     ui.label("Sustain");
+                });
+                ui.vertical(|ui|{
+                    if ui.add(Knob::new(&mut local_env.release, 0.0, 1.0)).changed(){
+                        env_changed = true;
+                    }
+                    ui.label("Release");
                 });
             })
         });
