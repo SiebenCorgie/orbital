@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::{
-    com::{OrbitalState, SolarState},
+    com::{OrbitalState, SolarState, GainType},
     osc_array::OscVoiceState,
     renderer::orbital::{Orbital, TWOPI},
     Time,
@@ -179,7 +179,7 @@ pub struct OscillatorBank {
     #[serde_as(as = "[_; OscillatorBank::BANK_SIZE]")]
     oscillators: [Oscillator; Self::BANK_SIZE],
     pub mod_ty: ModulationType,
-    phase: f32,
+    pub gain_ty: GainType,
 }
 
 impl Default for OscillatorBank {
@@ -188,7 +188,7 @@ impl Default for OscillatorBank {
         OscillatorBank {
             oscillators: [Oscillator::default(); Self::BANK_SIZE],
             mod_ty: ModulationType::Absolute,
-            phase: 0.0,
+            gain_ty: GainType::Linear,
         }
     }
 }
@@ -321,7 +321,7 @@ impl OscillatorBank {
                 acc += self.step(vidx, voices[vidx].freq, delta_sec as f32) * volume as f32;
             }
 
-            let val = sigmoid(acc);
+            let val = self.gain_ty.map(acc);
             for csam in sample.iter_mut() {
                 *csam = val;
             }

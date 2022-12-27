@@ -1,4 +1,4 @@
-use com::ComMsg;
+use com::{ComMsg, GainType};
 use crossbeam::channel::{Receiver, Sender, TryRecvError};
 use envelope::EnvelopeParams;
 use nih_plug::{
@@ -46,6 +46,8 @@ pub struct OrbitalParams {
     editor_state: Arc<EguiState>,
     #[persist = "modty"]
     pub mod_ty: Arc<Mutex<ModulationType>>,
+    #[persist = "gainty"]
+    pub gain_ty: Arc<Mutex<GainType>>,
     #[persist = "Synth"]
     pub synth: Arc<Mutex<OscArray>>,
     #[persist = "SolarSystem"]
@@ -70,6 +72,7 @@ impl Default for OrbitalParams {
             adsr: Arc::new(Mutex::new(EnvelopeParams::default())),
             // See the main gain example for more details
             mod_ty: Arc::new(Mutex::new(ModulationType::Absolute)),
+            gain_ty: Arc::new(Mutex::new(GainType::Linear)),
             synth: Arc::new(Mutex::new(OscArray::default())),
             solar_system: Arc::new(Mutex::new(SolarSystem::new())),
         }
@@ -195,6 +198,12 @@ impl Plugin for Orbital {
                                 *p = env_param.clone();
                             }
                             self.synth.set_envelopes(env_param)
+                        },
+                        ComMsg::GainChange(new_gain) => {
+                            if let Ok(mut p) = self.params.gain_ty.try_lock(){
+                                *p = new_gain.clone();
+                            }
+                            self.synth.bank.gain_ty = new_gain;
                         }
                     }
                 }

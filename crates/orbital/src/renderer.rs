@@ -1,11 +1,10 @@
 use std::{sync::Arc, time::Instant};
 
-use crate::{com::ComMsg, envelope::EnvelopeParams, osc::ModulationType, OrbitalParams};
+use crate::{com::{ComMsg, GainType}, envelope::EnvelopeParams, osc::ModulationType, OrbitalParams};
 use crossbeam::channel::Sender;
-use egui::Slider;
 use nih_plug_egui::egui::{Sense, Widget};
 
-use self::{solar_system::SolarSystem, adsrgui::{AdsrGui, Knob}};
+use self::{solar_system::SolarSystem, adsrgui::{Knob, GainSwitch}};
 
 pub mod orbital;
 pub mod solar_system;
@@ -38,6 +37,8 @@ impl Widget for &mut Renderer {
             .unwrap_or(EnvelopeParams::default());
         let mut env_changed = false;
 
+        let mut gain_ty = self.params.gain_ty.lock().map(|g| g.clone()).unwrap_or(GainType::Linear);
+
         let tp = egui::TopBottomPanel::top("Toppanel").show(ui.ctx(), |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Pause").clicked() {
@@ -62,6 +63,10 @@ impl Widget for &mut Renderer {
                             }
                         })
                 });
+
+                if ui.add(GainSwitch::new(&mut gain_ty)).changed(){
+                    let _ = self.msg_sender.send(ComMsg::GainChange(gain_ty));
+                }
 
                 ui.vertical(|ui|{
                     if ui.add(Knob::new(&mut local_env.delay, 0.0, 1.0)).changed(){
@@ -99,6 +104,7 @@ impl Widget for &mut Renderer {
                     }
                     ui.label("Release");
                 });
+
             })
         });
 

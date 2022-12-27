@@ -1,6 +1,9 @@
+use nih_plug::prelude::Enum;
+use serde::{Serialize, Deserialize};
+
 use crate::{
     envelope::EnvelopeParams,
-    osc::{ModulationType, OscType},
+    osc::{ModulationType, OscType, sigmoid},
 };
 
 #[derive(Clone, Debug)]
@@ -17,6 +20,28 @@ pub struct SolarState {
     pub states: Vec<OrbitalState>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Enum)]
+pub enum GainType{
+    Sigmoid,
+    Linear,
+}
+
+impl GainType{
+    pub fn map(&self, value: f32) -> f32{
+        match self {
+            GainType::Sigmoid => sigmoid(value),
+            GainType::Linear => value.clamp(0.0, 1.0)
+        }
+    }
+
+    pub fn next(&mut self) {
+        match self {
+            GainType::Linear => *self = GainType::Sigmoid,
+            GainType::Sigmoid => *self = GainType::Linear,
+        }
+    }
+}
+
 ///Communication messages from the renderer to the oscillator bank.
 #[derive(Clone, Debug)]
 pub enum ComMsg {
@@ -24,4 +49,5 @@ pub enum ComMsg {
     SolarState(SolarState),
     EnvChanged(EnvelopeParams),
     ModRelationChanged(ModulationType),
+    GainChange(GainType)
 }
