@@ -5,10 +5,13 @@ use crossbeam::channel::Sender;
 use egui::Slider;
 use nih_plug_egui::egui::{Sense, Widget};
 
-use self::solar_system::SolarSystem;
+use self::{solar_system::SolarSystem, adsrgui::{AdsrGui, Knob}};
 
 pub mod orbital;
 pub mod solar_system;
+pub mod adsrgui;
+
+
 
 pub struct Renderer {
     pub params: Arc<OrbitalParams>,
@@ -34,6 +37,7 @@ impl Widget for &mut Renderer {
             .map(|m| m.clone())
             .unwrap_or(EnvelopeParams::default());
         let mut env_changed = false;
+
         let tp = egui::TopBottomPanel::top("Toppanel").show(ui.ctx(), |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Pause").clicked() {
@@ -59,65 +63,9 @@ impl Widget for &mut Renderer {
                         })
                 });
 
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Delay");
-                        if ui
-                            .add(Slider::new(&mut local_env.delay, 0.0..=1.0))
-                            .changed()
-                        {
-                            env_changed = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Attack");
-                        if ui
-                            .add(Slider::new(&mut local_env.attack, 0.0..=1.0))
-                            .changed()
-                        {
-                            env_changed = true;
-                        }
-                    });
-                });
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Hold");
-                        if ui
-                            .add(Slider::new(&mut local_env.hold, 0.0..=1.0))
-                            .changed()
-                        {
-                            env_changed = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Decay");
-                        if ui
-                            .add(Slider::new(&mut local_env.decay, 0.0..=1.0))
-                            .changed()
-                        {
-                            env_changed = true;
-                        }
-                    });
-                });
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("Sustain level");
-                        if ui
-                            .add(Slider::new(&mut local_env.sustain_level, 0.0..=1.0))
-                            .changed()
-                        {
-                            env_changed = true;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Release");
-                        if ui
-                            .add(Slider::new(&mut local_env.release, 0.0..=1.0))
-                            .changed()
-                        {
-                            env_changed = true;
-                        }
-                    });
+                ui.vertical(|ui|{
+                    ui.add(Knob::new(&mut local_env.sustain_level));
+                    ui.label("Sustain");
                 });
             })
         });

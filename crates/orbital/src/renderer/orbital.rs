@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub const TWOPI: f32 = 2.0 * PI;
-fn rotate_vec2(src: Vec2, angle: f32) -> Vec2 {
+pub fn rotate_vec2(src: Vec2, angle: f32) -> Vec2 {
     let cos = angle.cos();
     let sin = angle.sin();
     let v = Vec2 {
