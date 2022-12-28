@@ -16,13 +16,12 @@ A cosmic, polyphonic, additive FM synthesizer.
 - Sample correct midi event offsets
 - 5 stage ADSR Midi-filter including: delay, attack, hold, decay, sustain level, release.
 - High quality sin based oscillators
+- Two voice composition options: Linear (clear for less voices), Sigmoid (Warm distortion for more voices).
 
 ## Planed features
-- Better voice addressing
-- Multiple voice composition options: currently all voices are mixed via a sigmoid which produces distortion when playing multiple high volume voices.
 - SIMD implementation: Currently all oscillators in a bank are processed sequentially using sine waves. This produces a high quality result. The CPU load hover could be reduced dramatically if SIMD and, for lower frequencies a sine approximation was used.
 - Phase modulation and amplitude: Maybe let the user chose the type of modulation on a *per planet* basis.
-- UI improvements
+
 ## Getting the plugin
 
 There are two ways: Either you use the build instructions below, or you write me on one of the platforms mentioned on [siebencorgie.rs](https://siebencorgie.rs) and I'll try to send you a recent version when I have time.
