@@ -4,13 +4,13 @@ use crate::{com::{ComMsg, GainType}, envelope::EnvelopeParams, osc::ModulationTy
 use crossbeam::channel::Sender;
 use nih_plug_egui::egui::{Sense, Widget};
 
-use self::{solar_system::SolarSystem, adsrgui::{Knob, GainSwitch}};
+use self::{solar_system::SolarSystem, adsrgui::{Knob, GainSwitch}, modswitch::ModSwitch, ppbutton::PPButton};
 
 pub mod orbital;
 pub mod solar_system;
 pub mod adsrgui;
-
-
+pub mod modswitch;
+pub mod ppbutton;
 
 pub struct Renderer {
     pub params: Arc<OrbitalParams>,
@@ -40,69 +40,47 @@ impl Widget for &mut Renderer {
         let mut gain_ty = self.params.gain_ty.lock().map(|g| g.clone()).unwrap_or(GainType::Linear);
 
         let tp = egui::TopBottomPanel::top("Toppanel").show(ui.ctx(), |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Pause").clicked() {
-                    self.system.paused = !self.system.paused;
+            ui.horizontal_centered(|ui| {
+                ui.add(PPButton::new(&mut self.system.paused));
+                if ui.add(ModSwitch::new(&mut mod_ty)).changed(){
+                    let _ = self
+                        .msg_sender
+                        .send(ComMsg::ModRelationChanged(mod_ty.clone()));
                 }
-                ui.vertical(|ui| {
-                    ui.label("Modulation relation");
-                    egui::ComboBox::from_id_source("modty")
-                        .selected_text(format!("{:?}", mod_ty))
-                        .show_ui(ui, |ui| {
-                            if ui
-                                .selectable_value(&mut mod_ty, ModulationType::Absolute, "Absolute")
-                                .changed()
-                            {
-                                mod_ty_changed = true;
-                            }
-                            if ui
-                                .selectable_value(&mut mod_ty, ModulationType::Relative, "Relative")
-                                .changed()
-                            {
-                                mod_ty_changed = true;
-                            }
-                        })
-                });
 
                 if ui.add(GainSwitch::new(&mut gain_ty)).changed(){
                     let _ = self.msg_sender.send(ComMsg::GainChange(gain_ty));
                 }
 
                 ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.delay, 0.0, 1.0)).changed(){
+                    if ui.add(Knob::new(&mut local_env.delay, 0.0, 1.0).with_label("Delay")).changed(){
                         env_changed = true;
                     }
-                    ui.label("Delay");
                 });
                 ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.attack, 0.0, 1.0)).changed(){
+                    if ui.add(Knob::new(&mut local_env.attack, 0.0, 1.0).with_label("Attack")).changed(){
                         env_changed = true;
                     }
-                    ui.label("Attack");
                 });
                 ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.hold, 0.0, 1.0)).changed(){
+                    if ui.add(Knob::new(&mut local_env.hold, 0.0, 1.0).with_label("Hold")).changed(){
                         env_changed = true;
                     }
-                    ui.label("Hold");
                 });
                 ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.decay, 0.0, 1.0)).changed(){
+                    if ui.add(Knob::new(&mut local_env.decay, 0.0, 1.0).with_label("Decay")).changed(){
                         env_changed = true;
                     }
-                    ui.label("Decay");
                 });
                 ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.sustain_level, 0.0, 1.0)).changed(){
+                    if ui.add(Knob::new(&mut local_env.sustain_level, 0.0, 1.0).with_label("Sustain")).changed(){
                         env_changed = true;
                     }
-                    ui.label("Sustain");
                 });
                 ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.release, 0.0, 1.0)).changed(){
+                    if ui.add(Knob::new(&mut local_env.release, 0.0, 1.0).with_label("Release")).changed(){
                         env_changed = true;
                     }
-                    ui.label("Release");
                 });
 
             })
@@ -110,11 +88,6 @@ impl Widget for &mut Renderer {
 
         if env_changed {
             let _ = self.msg_sender.send(ComMsg::EnvChanged(local_env));
-        }
-        if mod_ty_changed {
-            let _ = self
-                .msg_sender
-                .send(ComMsg::ModRelationChanged(mod_ty.clone()));
         }
         let ctpanel = egui::CentralPanel::default().show(ui.ctx(), |ui| {
             let rect = ui.clip_rect();

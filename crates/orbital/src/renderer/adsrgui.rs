@@ -1,5 +1,5 @@
 
-use egui::{Widget,Response, Sense, Stroke, Color32, Vec2, epaint::CubicBezierShape, Align2, FontId, Shape};
+use egui::{Widget,Response, Sense, Stroke, Color32, Vec2, epaint::CubicBezierShape, Align2, FontId, Shape, Label};
 use crate:: com::GainType;
 use super::orbital::{TWOPI, rotate_vec2};
 
@@ -8,6 +8,7 @@ pub struct Knob<'a, T>{
     pub value: &'a mut T,
     //rectangel
     pub size: f32,
+    pub label: Option<&'a str>,
     pub min: T,
     pub max: T
 }
@@ -17,6 +18,7 @@ impl<'a, T> Knob<'a, T>{
         Knob {
             value,
             size: 50.0,
+            label: None,
             min,
             max
         }
@@ -25,6 +27,11 @@ impl<'a, T> Knob<'a, T>{
     #[allow(dead_code)]
     pub fn with_size(mut self, size: f32) -> Self{
         self.size = size;
+        self
+    }
+
+    pub fn with_label(mut self, label: &'a str) -> Self{
+        self.label = Some(label);
         self
     }
 
@@ -89,6 +96,10 @@ impl<'a> Widget for Knob<'a, f32>{
         painter.circle(rect.center() + at, 2.0, Color32::WHITE, Stroke::none());
         painter.line_segment([rect.center_bottom(), rect.center_bottom() - Vec2{x: 0.0, y: 10.0}], Stroke::new(1.0, Color32::WHITE));
         painter.text(rect.center(), Align2::CENTER_CENTER, format!("{:.2}", self.value), FontId::default(), Color32::WHITE);
+
+        if let Some(label) = self.label{
+            ui.add_sized(Vec2{x: self.size, y: ui.available_height()}, Label::new(label));
+        }
         resp
     }
 }
@@ -148,6 +159,10 @@ impl<'a> Widget for Knob<'a, f64>{
         painter.circle(rect.center() + at, 2.0, Color32::WHITE, Stroke::none());
         painter.line_segment([rect.center_bottom(), rect.center_bottom() - Vec2{x: 0.0, y: 10.0}], Stroke::new(1.0, Color32::WHITE));
         painter.text(rect.center(), Align2::CENTER_CENTER, format!("{:.2}", self.value), FontId::default(), Color32::WHITE);
+
+        if let Some(label) = self.label{
+            ui.add_sized(Vec2{x: self.size, y: ui.available_height()}, Label::new(label));
+        }
         resp
     }
 }
@@ -158,9 +173,11 @@ pub struct GainSwitch<'a>{
 }
 
 impl<'a> GainSwitch<'a>{
-    const SIZE: Vec2 = Vec2{x: 100.0, y: 65.0};
+    pub const SIZE: Vec2 = Vec2{x: 100.0, y: 65.0};
     const XOFF: f32 = 20.0;
     const YOFF: f32 = 15.0;
+    pub const COLOR: Color32 = Color32::WHITE;
+    pub const STROKE: Stroke = Stroke{width: 1.0, color: Self::COLOR};
     pub fn new(value: &'a mut GainType) -> Self{
         GainSwitch { value }
     }
@@ -184,7 +201,7 @@ impl<'a> Widget for GainSwitch<'a>{
                         rect.left_center() + Vec2{x: 0.0, y: Self::YOFF},
                         rect.center() + Vec2{x: -Self::XOFF, y: Self::YOFF}
                     ],
-                    Stroke::new(1.0, Color32::GRAY)
+                    Self::STROKE
                 );
 
                 painter.line_segment(
@@ -192,7 +209,7 @@ impl<'a> Widget for GainSwitch<'a>{
                         rect.center() + Vec2{x: -Self::XOFF, y: Self::YOFF},
                         rect.center() + Vec2{x: Self::XOFF, y: -Self::YOFF}
                     ],
-                    Stroke::new(1.0, Color32::GRAY)
+                    Self::STROKE
                 );
 
                 painter.line_segment(
@@ -200,7 +217,7 @@ impl<'a> Widget for GainSwitch<'a>{
                         rect.center() + Vec2{x: Self::XOFF, y: -Self::YOFF},
                         rect.right_center() + Vec2{x: 0.0, y: -Self::YOFF}
                     ],
-                    Stroke::new(1.0, Color32::GRAY)
+                    Self::STROKE
                 );
 
                 painter.text(rect.center_bottom(), Align2::CENTER_BOTTOM, "Linear", FontId::default(), Color32::GRAY);
@@ -212,7 +229,7 @@ impl<'a> Widget for GainSwitch<'a>{
                         rect.left_center() + Vec2{x: 0.0, y: Self::YOFF},
                         rect.center() + Vec2{x: -Self::XOFF, y: Self::YOFF}
                     ],
-                    Stroke::new(1.0, Color32::GRAY)
+                    Self::STROKE
                 );
 
 
@@ -225,7 +242,7 @@ impl<'a> Widget for GainSwitch<'a>{
                     ],
                     false,
                     Color32::TRANSPARENT,
-                    Stroke::new(1.0, Color32::GRAY)
+                    Self::STROKE
                 )));
 
                 painter.line_segment(
@@ -233,7 +250,7 @@ impl<'a> Widget for GainSwitch<'a>{
                         rect.center() + Vec2{x: Self::XOFF, y: -Self::YOFF},
                         rect.right_center() + Vec2{x: 0.0, y: -Self::YOFF}
                     ],
-                    Stroke::new(1.0, Color32::GRAY)
+                    Self::STROKE
                 );
 
                 painter.text(rect.center_bottom(), Align2::CENTER_BOTTOM, "Sigmoid", FontId::default(), Color32::GRAY);

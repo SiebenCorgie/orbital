@@ -27,6 +27,15 @@ pub enum ModulationType {
     Relative,
 }
 
+impl ModulationType{
+    pub fn next(&self) -> Self{
+        match self {
+            ModulationType::Absolute => Self::Relative,
+            ModulationType::Relative => Self::Absolute,
+        }
+    }
+}
+
 ///There are two oscillator types, primary, and modulator. However we also track turned off osc's
 /// for performance reasons
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
