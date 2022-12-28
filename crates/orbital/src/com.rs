@@ -1,9 +1,9 @@
 use nih_plug::prelude::Enum;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     envelope::EnvelopeParams,
-    osc::{ModulationType, OscType, sigmoid},
+    osc::{sigmoid, ModulationType, OscType},
 };
 
 #[derive(Clone, Debug)]
@@ -21,16 +21,16 @@ pub struct SolarState {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Enum)]
-pub enum GainType{
+pub enum GainType {
     Sigmoid,
     Linear,
 }
 
-impl GainType{
-    pub fn map(&self, value: f32) -> f32{
+impl GainType {
+    pub fn map(&self, value: f32) -> f32 {
         match self {
             GainType::Sigmoid => sigmoid(value),
-            GainType::Linear => value.clamp(0.0, 1.0)
+            GainType::Linear => value.clamp(0.0, 1.0),
         }
     }
 
@@ -49,5 +49,5 @@ pub enum ComMsg {
     SolarState(SolarState),
     EnvChanged(EnvelopeParams),
     ModRelationChanged(ModulationType),
-    GainChange(GainType)
+    GainChange(GainType),
 }

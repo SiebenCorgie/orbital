@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::{
-    com::{OrbitalState, SolarState, GainType},
+    com::{GainType, OrbitalState, SolarState},
     osc_array::OscVoiceState,
     renderer::orbital::{Orbital, TWOPI},
     Time,
@@ -27,8 +27,8 @@ pub enum ModulationType {
     Relative,
 }
 
-impl ModulationType{
-    pub fn next(&self) -> Self{
+impl ModulationType {
+    pub fn next(&self) -> Self {
         match self {
             ModulationType::Absolute => Self::Relative,
             ModulationType::Relative => Self::Absolute,

@@ -1,16 +1,26 @@
 use std::{sync::Arc, time::Instant};
 
-use crate::{com::{ComMsg, GainType}, envelope::EnvelopeParams, osc::ModulationType, OrbitalParams};
+use crate::{
+    com::{ComMsg, GainType},
+    envelope::EnvelopeParams,
+    osc::ModulationType,
+    OrbitalParams,
+};
 use crossbeam::channel::Sender;
 use nih_plug_egui::egui::{Sense, Widget};
 
-use self::{solar_system::SolarSystem, adsrgui::{Knob, GainSwitch}, modswitch::ModSwitch, ppbutton::PPButton};
+use self::{
+    adsrgui::{GainSwitch, Knob},
+    modswitch::ModSwitch,
+    ppbutton::PPButton,
+    solar_system::SolarSystem,
+};
 
-pub mod orbital;
-pub mod solar_system;
 pub mod adsrgui;
 pub mod modswitch;
+pub mod orbital;
 pub mod ppbutton;
+pub mod solar_system;
 
 pub struct Renderer {
     pub params: Arc<OrbitalParams>,
@@ -37,52 +47,76 @@ impl Widget for &mut Renderer {
             .unwrap_or(EnvelopeParams::default());
         let mut env_changed = false;
 
-        let mut gain_ty = self.params.gain_ty.lock().map(|g| g.clone()).unwrap_or(GainType::Linear);
+        let mut gain_ty = self
+            .params
+            .gain_ty
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or(GainType::Linear);
 
         let tp = egui::TopBottomPanel::top("Toppanel").show(ui.ctx(), |ui| {
             ui.horizontal_centered(|ui| {
                 ui.add(PPButton::new(&mut self.system.paused));
-                if ui.add(ModSwitch::new(&mut mod_ty)).changed(){
+                if ui.add(ModSwitch::new(&mut mod_ty)).changed() {
                     let _ = self
                         .msg_sender
                         .send(ComMsg::ModRelationChanged(mod_ty.clone()));
                 }
 
-                if ui.add(GainSwitch::new(&mut gain_ty)).changed(){
+                if ui.add(GainSwitch::new(&mut gain_ty)).changed() {
                     let _ = self.msg_sender.send(ComMsg::GainChange(gain_ty));
                 }
 
-                ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.delay, 0.0, 1.0).with_label("Delay")).changed(){
+                ui.vertical(|ui| {
+                    if ui
+                        .add(Knob::new(&mut local_env.delay, 0.0, 1.0).with_label("Delay"))
+                        .changed()
+                    {
                         env_changed = true;
                     }
                 });
-                ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.attack, 0.0, 1.0).with_label("Attack")).changed(){
+                ui.vertical(|ui| {
+                    if ui
+                        .add(Knob::new(&mut local_env.attack, 0.0, 1.0).with_label("Attack"))
+                        .changed()
+                    {
                         env_changed = true;
                     }
                 });
-                ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.hold, 0.0, 1.0).with_label("Hold")).changed(){
+                ui.vertical(|ui| {
+                    if ui
+                        .add(Knob::new(&mut local_env.hold, 0.0, 1.0).with_label("Hold"))
+                        .changed()
+                    {
                         env_changed = true;
                     }
                 });
-                ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.decay, 0.0, 1.0).with_label("Decay")).changed(){
+                ui.vertical(|ui| {
+                    if ui
+                        .add(Knob::new(&mut local_env.decay, 0.0, 1.0).with_label("Decay"))
+                        .changed()
+                    {
                         env_changed = true;
                     }
                 });
-                ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.sustain_level, 0.0, 1.0).with_label("Sustain")).changed(){
+                ui.vertical(|ui| {
+                    if ui
+                        .add(
+                            Knob::new(&mut local_env.sustain_level, 0.0, 1.0).with_label("Sustain"),
+                        )
+                        .changed()
+                    {
                         env_changed = true;
                     }
                 });
-                ui.vertical(|ui|{
-                    if ui.add(Knob::new(&mut local_env.release, 0.0, 1.0).with_label("Release")).changed(){
+                ui.vertical(|ui| {
+                    if ui
+                        .add(Knob::new(&mut local_env.release, 0.0, 1.0).with_label("Release"))
+                        .changed()
+                    {
                         env_changed = true;
                     }
                 });
-
             })
         });
 

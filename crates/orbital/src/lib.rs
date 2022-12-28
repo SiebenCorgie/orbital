@@ -198,9 +198,9 @@ impl Plugin for Orbital {
                                 *p = env_param.clone();
                             }
                             self.synth.set_envelopes(env_param)
-                        },
+                        }
                         ComMsg::GainChange(new_gain) => {
-                            if let Ok(mut p) = self.params.gain_ty.try_lock(){
+                            if let Ok(mut p) = self.params.gain_ty.try_lock() {
                                 *p = new_gain.clone();
                             }
                             self.synth.bank.gain_ty = new_gain;
