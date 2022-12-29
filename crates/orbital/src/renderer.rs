@@ -37,7 +37,7 @@ impl Widget for &mut Renderer {
             .mod_ty
             .lock()
             .map(|t| t.clone())
-            .unwrap_or(ModulationType::Absolute);
+            .unwrap_or(ModulationType::default());
 
         let mut local_env: EnvelopeParams = self
             .params
@@ -52,7 +52,7 @@ impl Widget for &mut Renderer {
             .gain_ty
             .lock()
             .map(|g| g.clone())
-            .unwrap_or(GainType::Linear);
+            .unwrap_or(GainType::default());
 
         let mut reset_phase = self
             .params

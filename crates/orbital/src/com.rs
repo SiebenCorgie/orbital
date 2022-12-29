@@ -26,6 +26,12 @@ pub enum GainType {
     Linear,
 }
 
+impl Default for GainType{
+    fn default() -> Self {
+        GainType::Sigmoid
+    }
+}
+
 impl GainType {
     pub fn map(&self, value: f32) -> f32 {
         match self {

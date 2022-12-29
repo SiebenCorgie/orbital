@@ -27,6 +27,12 @@ pub enum ModulationType {
     Relative,
 }
 
+impl Default for ModulationType{
+    fn default() -> Self {
+        ModulationType::Relative
+    }
+}
+
 impl ModulationType {
     pub fn next(&self) -> Self {
         match self {
@@ -206,8 +212,8 @@ impl Default for OscillatorBank {
         //pre allocating oscillator banks. But vec allows us to outgrow if neede
         OscillatorBank {
             oscillators: [Oscillator::default(); Self::BANK_SIZE],
-            mod_ty: ModulationType::Absolute,
-            gain_ty: GainType::Linear,
+            mod_ty: ModulationType::default(),
+            gain_ty: GainType::default(),
             reset_phase: false
         }
     }

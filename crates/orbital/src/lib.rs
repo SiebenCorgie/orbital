@@ -74,9 +74,9 @@ impl Default for OrbitalParams {
             editor_state: EguiState::from_size(800, 800),
             adsr: Arc::new(Mutex::new(EnvelopeParams::default())),
             // See the main gain example for more details
-            mod_ty: Arc::new(Mutex::new(ModulationType::Absolute)),
+            mod_ty: Arc::new(Mutex::new(ModulationType::default())),
             reset_phase: Arc::new(Mutex::new(false)),
-            gain_ty: Arc::new(Mutex::new(GainType::Linear)),
+            gain_ty: Arc::new(Mutex::new(GainType::default())),
             synth: Arc::new(Mutex::new(OscArray::default())),
             solar_system: Arc::new(Mutex::new(SolarSystem::new())),
         }
@@ -151,7 +151,7 @@ impl Plugin for Orbital {
             .mod_ty
             .lock()
             .map(|m| m.clone())
-            .unwrap_or(ModulationType::Absolute);
+            .unwrap_or(ModulationType::default());
         true
     }
 
