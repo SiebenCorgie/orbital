@@ -125,7 +125,7 @@ impl Widget for &mut Renderer {
                     }
                 });
 
-                ui.vertical_centered(|ui|{
+                ui.vertical(|ui|{
 
                     if ui.add(Switch::new(&mut reset_phase).with_label("Reset Phase")).changed(){
                         let _ = self.msg_sender.send(ComMsg::ResetPhaseChanged(reset_phase));

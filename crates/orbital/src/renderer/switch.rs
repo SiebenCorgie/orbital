@@ -1,4 +1,6 @@
-use egui::{Widget, Label, Color32, Stroke};
+use egui::{Widget, Label, Color32, Stroke, Vec2, Ui};
+
+use super::adsrgui::GainSwitch;
 
 
 
@@ -26,6 +28,9 @@ impl<'a> Widget for Switch<'a>{
         ui.vertical(|ui|{
 
             let desired_size = ui.spacing().interact_size.y * egui::vec2(2.0, 1.0);
+
+            ui.add_space(desired_size.y);
+
             let (rect, mut response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
             if response.clicked() {
                 *self.value = !*self.value;
@@ -45,11 +50,16 @@ impl<'a> Widget for Switch<'a>{
                 ui.painter()
                   .circle(center, 0.75 * radius, visuals.bg_fill, visuals.fg_stroke);
 
-                if let Some(l) = self.label{
-                    ui.add_sized(desired_size, Label::new(l));
-                }
             }
 
+            if let Some(l) = self.label{
+                ui.add_sized(
+                    Vec2{
+                        x: desired_size.x,
+                        y: ui.available_height()
+                    }, Label::new(l)
+                );
+            }
             response
         }).inner
     }
