@@ -13,7 +13,7 @@ use self::{
     adsrgui::{GainSwitch, Knob},
     modswitch::ModSwitch,
     ppbutton::PPButton,
-    solar_system::SolarSystem,
+    solar_system::SolarSystem, switch::Switch,
 };
 
 pub mod adsrgui;
@@ -21,6 +21,7 @@ pub mod modswitch;
 pub mod orbital;
 pub mod ppbutton;
 pub mod solar_system;
+pub mod switch;
 
 pub struct Renderer {
     pub params: Arc<OrbitalParams>,
@@ -37,7 +38,6 @@ impl Widget for &mut Renderer {
             .lock()
             .map(|t| t.clone())
             .unwrap_or(ModulationType::Absolute);
-        let mut mod_ty_changed = false;
 
         let mut local_env: EnvelopeParams = self
             .params
@@ -53,6 +53,13 @@ impl Widget for &mut Renderer {
             .lock()
             .map(|g| g.clone())
             .unwrap_or(GainType::Linear);
+
+        let mut reset_phase = self
+            .params
+            .reset_phase
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or(false);
 
         let tp = egui::TopBottomPanel::top("Toppanel").show(ui.ctx(), |ui| {
             ui.horizontal_centered(|ui| {
@@ -117,6 +124,14 @@ impl Widget for &mut Renderer {
                         env_changed = true;
                     }
                 });
+
+                ui.vertical_centered(|ui|{
+
+                    if ui.add(Switch::new(&mut reset_phase).with_label("Reset Phase")).changed(){
+                        let _ = self.msg_sender.send(ComMsg::ResetPhaseChanged(reset_phase));
+                    }
+                })
+
             })
         });
 

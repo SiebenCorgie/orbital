@@ -44,6 +44,9 @@ pub struct OrbitalParams {
     /// restored.
     #[persist = "editor-state"]
     editor_state: Arc<EguiState>,
+    #[persist = "resetphase"]
+    pub reset_phase: Arc<Mutex<bool>>,
+
     #[persist = "modty"]
     pub mod_ty: Arc<Mutex<ModulationType>>,
     #[persist = "gainty"]
@@ -72,6 +75,7 @@ impl Default for OrbitalParams {
             adsr: Arc::new(Mutex::new(EnvelopeParams::default())),
             // See the main gain example for more details
             mod_ty: Arc::new(Mutex::new(ModulationType::Absolute)),
+            reset_phase: Arc::new(Mutex::new(false)),
             gain_ty: Arc::new(Mutex::new(GainType::Linear)),
             synth: Arc::new(Mutex::new(OscArray::default())),
             solar_system: Arc::new(Mutex::new(SolarSystem::new())),
@@ -204,6 +208,12 @@ impl Plugin for Orbital {
                                 *p = new_gain.clone();
                             }
                             self.synth.bank.gain_ty = new_gain;
+                        },
+                        ComMsg::ResetPhaseChanged(new) => {
+                            if let Ok(mut p) = self.params.reset_phase.try_lock() {
+                                *p = new;
+                            }
+                            self.synth.bank.reset_phase = new;
                         }
                     }
                 }

@@ -189,6 +189,7 @@ pub struct OscillatorBank {
     oscillators: [Oscillator; Self::BANK_SIZE],
     pub mod_ty: ModulationType,
     pub gain_ty: GainType,
+    pub reset_phase: bool,
 }
 
 impl Default for OscillatorBank {
@@ -198,6 +199,7 @@ impl Default for OscillatorBank {
             oscillators: [Oscillator::default(); Self::BANK_SIZE],
             mod_ty: ModulationType::Absolute,
             gain_ty: GainType::Linear,
+            reset_phase: false
         }
     }
 }
@@ -241,6 +243,13 @@ impl OscillatorBank {
 
     fn osc_index(voice: usize, osc: usize) -> usize {
         voice * Self::OSC_COUNT + osc
+    }
+
+    pub fn reset_voice(&mut self, voice_idx: usize){
+        for i in 0..Self::OSC_COUNT{
+            let osc = &mut self.oscillators[Self::osc_index(voice_idx, i)];
+            osc.phase = osc.offset;
+        }
     }
 
     ///Steps the whole voice-bank once, returning a modulated value based on "base_frequency".

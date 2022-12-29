@@ -83,12 +83,17 @@ impl Default for OscArray {
 impl OscArray {
     pub fn note_on(&mut self, note: u8, at: Time) {
         //search for an inactive voice and init.
-        for v in &mut self.voices {
+        for (vidx, v) in self.voices.iter_mut().enumerate() {
             if v.state.is_off() {
                 v.state = VoiceState::On;
                 v.note = note;
                 v.freq = midi_note_to_freq(note);
                 v.env.on_press(at);
+
+                if self.bank.reset_phase{
+                    self.bank.reset_voice(vidx);
+                }
+
                 return;
             }
         }

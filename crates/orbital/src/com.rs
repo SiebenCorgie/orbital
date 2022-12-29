@@ -50,4 +50,5 @@ pub enum ComMsg {
     EnvChanged(EnvelopeParams),
     ModRelationChanged(ModulationType),
     GainChange(GainType),
+    ResetPhaseChanged(bool)
 }
