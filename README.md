@@ -46,9 +46,9 @@ You can add a child modulator to a planet by dragging the edge of the planet out
 The speed of an oscillator is (octave wise) increased or decreased when scrolling while hovering over its orbit.
 
 This is the main interface to the synth. However, apart from a standard [ADSR](https://www.wikiaudio.org/adsr-envelope/) filter three parameters at the top are interesting. The most left parameter changes the relation between a modulator and its parent. When set to *relative* the modulator takes the parents frequency and changes that. When set to *absolute* the reference frequency will always be 440 Hz.
-The next parameter changes how voices are mixed. Linear takes the *groundtruth* output and clamps it to -1.0 - 1.0. [Sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) uses a function to map any value in that range.
+The next parameter changes how voices are mixed. Linear takes the *ground truth* output and clamps it to -1.0 - 1.0. [Sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) uses a function to map any value in that range.
 
-Finally you can enable *reset phase*, which will reset the internal oscillator before playing a new not. This is interesting if you want to be sure that succesive played notes sound the same.
+Finally you can enable *reset phase*, which will reset the internal oscillator before playing a new not. This is interesting if you want to be sure that successive played notes sound the same.
 
 ## License
 
