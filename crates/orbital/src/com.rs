@@ -36,7 +36,7 @@ impl GainType {
     pub fn map(&self, value: f32) -> f32 {
         match self {
             GainType::Sigmoid => sigmoid(value),
-            GainType::Linear => value.clamp(0.0, 1.0),
+            GainType::Linear => value.clamp(-1.0, 1.0),
         }
     }
 
