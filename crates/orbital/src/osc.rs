@@ -43,7 +43,7 @@ pub enum OscType {
     Primary {
         ///Base frequency multiplier. This basically means if a note @ 440Hz is played, and this is 0.5, then
         /// the primary oscillator has a base frequency of 220Hz
-        base_multiplier: f32,
+        speed_index: i32,
         volume: f32,
     },
     ///Modulates the Oscillator at the given index in the bank.
@@ -57,12 +57,22 @@ pub enum OscType {
         range: f32,
         ///Abstract speed of this modulator. Depending on the modulation type this is
         /// either the relative frequency modulation, or a certain frequency in mel.
-        speed: f32,
+        speed_index: i32,
     },
     Off,
 }
 
 impl OscType {
+
+    //returns current frequency in relation to a base frequency
+    fn freq(&self, base_frequency: f32) -> f32{
+        match self {
+            Self::Modulator { speed_index, .. } => base_frequency * 2.0f32.powf(*speed_index as f32),
+            Self::Primary { speed_index, ..} => base_frequency * 2.0f32.powf(*speed_index as f32),
+            Self::Off => 0.0
+        }
+    }
+
     ///Calculates a step value based on:
     ///
     /// δ_sec: time in seconds each sample takes (1.0 / sample_rate)
@@ -80,25 +90,25 @@ impl OscType {
     ) -> f32 {
         match self {
             OscType::Primary {
-                base_multiplier, ..
+                ..
             } => {
                 //calculate step by finding "our" base frequency, and weighting that with the percentile. Then advance
                 // via δ
-                let local_base = (base_frequency * base_multiplier).max(0.0);
+                let local_base = (self.freq(base_frequency)).max(0.0);
                 let final_freq = local_base * frequency_multiplier;
                 d_sec * final_freq * TWOPI
             }
             OscType::Modulator {
                 parent_osc_slot: _,
                 range: _,
-                speed,
+                ..
             } => {
                 //depending on the modulation type, either scale by base frequency, or dont't
                 match mod_ty {
                     //in this case, its easy, weigh with percentile and move base on our frequency
                     ModulationType::Absolute => {
                         d_sec
-                            * mel_to_freq(speed * Orbital::MEL_MULTIPLIER)
+                            * self.freq(Orbital::ABS_BASE_FREQ)
                             * frequency_multiplier
                             * TWOPI
                     }
@@ -109,8 +119,7 @@ impl OscType {
                         //
                         // Then we add the modulation multiplier as well.
 
-                        let modded_base =
-                            mel_to_freq((freq_to_mel(base_frequency) * *speed).max(0.0));
+                        let modded_base = self.freq(base_frequency).max(0.0);
 
                         d_sec * modded_base * frequency_multiplier * TWOPI
                     }

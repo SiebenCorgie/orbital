@@ -64,12 +64,11 @@ impl SolarSystem {
             let mut click_taken = false;
 
             if response.drag_started() {
-                if let Some(slot) = self.find_slot() {
-                    for orbital in &mut self.orbitals {
-                        if orbital.on_drag_start(interaction_pos, slot) {
-                            click_taken = true;
-                            break;
-                        }
+                let slot_candidate = self.find_slot();
+                for orbital in &mut self.orbitals {
+                    if orbital.on_drag_start(interaction_pos, slot_candidate) {
+                        click_taken = true;
+                        break;
                     }
                 }
             }

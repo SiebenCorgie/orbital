@@ -149,7 +149,7 @@ pub struct Orbital {
     //current phase (in radiant) of this orbital.
     phase: f32,
     //abstract orbital speed. In case of an
-    speed: f32,
+    speed_index: i32,
 
     orbit_width: f32,
     planet_highlight: bool,
@@ -176,6 +176,7 @@ impl Orbital {
     ///Multplier used to scale the `speed` value to mel. The mel scale reaches 10k Hz @
     /// around 3.6k mel. This means a speed value of 1.0 is ~2.5k Hz.
     pub const MEL_MULTIPLIER: f32 = 10.0;
+    pub const ABS_BASE_FREQ: f32 = 440.0;
 
     const SPEED_SCROLL_MULTIPLIER: f32 = 0.1;
 
@@ -190,7 +191,7 @@ impl Orbital {
             planet_highlight: false,
 
             phase: 0.0,
-            speed: 1.0,
+            speed_index: 0,
 
             offset,
             obj: ObjTy::Planet,
@@ -254,8 +255,13 @@ impl Orbital {
         self.offset = angle;
     }
 
+    fn anim_speed(&self) -> f32{
+        //using offsetted speed sigmoid
+        1.0 + (self.speed_index as f32 / (1.0 + (self.speed_index as f32).abs()))
+    }
+
     pub fn update(&mut self, delta: f32) {
-        self.phase = (self.phase + (self.speed * delta)) % TWOPI;
+        self.phase = (self.phase + (self.anim_speed() * delta)) % TWOPI;
         let new_loc = self.obj_pos();
         for c in &mut self.children {
             //forward update center...
@@ -265,9 +271,9 @@ impl Orbital {
         }
     }
 
-    pub fn on_drag_start(&mut self, at: Pos2, slot: usize) -> bool {
-        let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at)) {
-            (false, true) => {
+    pub fn on_drag_start(&mut self, at: Pos2, slot: Option<usize>) -> bool {
+        let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at), slot) {
+            (false, true, Some(slot)) => {
                 //drag start on planet, start dragging out a child
                 self.interaction = Interaction::DragNewChild {
                     slot,
@@ -276,12 +282,12 @@ impl Orbital {
                 };
                 true
             }
-            (true, true) => {
+            (true, true, _) => {
                 self.interaction = Interaction::DragPlanet { at };
                 self.phase = 0.0;
                 true
             }
-            (true, false) => {
+            (true, false, _) => {
                 //dragging orbit, change orbit radius
                 self.interaction = Interaction::DragOrbit { at };
                 true
@@ -366,10 +372,10 @@ impl Orbital {
 
     pub fn on_scroll(&mut self, delta: f32, at: Pos2) {
         if self.is_on_orbit_handle(at) {
-            self.speed = if delta < 0.0 {
-                self.speed * (1.0 - Self::SPEED_SCROLL_MULTIPLIER)
+            self.speed_index = if delta < 0.0 {
+                self.speed_index - 1
             } else {
-                self.speed * (1.0 + Self::SPEED_SCROLL_MULTIPLIER)
+                self.speed_index + 1
             };
         }
         for c in &mut self.children {
@@ -474,13 +480,13 @@ impl Orbital {
             let range = dist / (self.obj.max_orbit() - Self::MIN_ORBIT);
             OscType::Modulator {
                 parent_osc_slot: slot,
-                speed: self.speed,
+                speed_index: self.speed_index,
                 range: range.clamp(0.0, 1.0),
             }
         } else {
             let volume = self.radius / (self.obj.max_orbit() - Self::MIN_ORBIT);
             OscType::Primary {
-                base_multiplier: self.speed,
+                speed_index: self.speed_index,
                 volume,
             }
         };
