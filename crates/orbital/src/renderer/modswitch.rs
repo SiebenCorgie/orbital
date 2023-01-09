@@ -27,6 +27,13 @@ impl<'a> Widget for ModSwitch<'a> {
             *self.value = self.value.next();
             resp.mark_changed();
         }
+        let stroke = if resp.hovered(){
+            let mut s = Self::STROKE;
+            s.width = 2.0;
+            s
+        }else{
+            Self::STROKE
+        };
 
         match self.value {
             ModulationType::Absolute => {
@@ -43,7 +50,7 @@ impl<'a> Widget for ModSwitch<'a> {
                                 y: -Self::SPLIT,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
 
                 painter.line_segment(
@@ -59,7 +66,7 @@ impl<'a> Widget for ModSwitch<'a> {
                                 y: Self::SPLIT,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
                 painter.text(
                     rect.center_bottom(),
@@ -83,7 +90,7 @@ impl<'a> Widget for ModSwitch<'a> {
                                 y: -Self::SPLIT,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
 
                 painter.line_segment(
@@ -99,7 +106,7 @@ impl<'a> Widget for ModSwitch<'a> {
                                 y: Self::SPLIT,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
 
                 painter.line_segment(
@@ -115,7 +122,7 @@ impl<'a> Widget for ModSwitch<'a> {
                                 y: Self::SPLIT,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
                 painter.text(
                     rect.center_bottom(),

@@ -1,8 +1,4 @@
-use egui::{Widget, Label, Color32, Stroke, Vec2, Ui};
-
-use super::adsrgui::GainSwitch;
-
-
+use egui::{Widget, Label, Color32, Stroke, Vec2};
 
 pub struct Switch<'a>{
     pub value: &'a mut bool,

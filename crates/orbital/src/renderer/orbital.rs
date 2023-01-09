@@ -148,7 +148,7 @@ pub struct Orbital {
 
     //current phase (in radiant) of this orbital.
     phase: f32,
-    //abstract orbital speed. In case of an
+    //abstract orbital speed.
     speed_index: i32,
 
     orbit_width: f32,
@@ -173,12 +173,7 @@ impl Orbital {
     const MAX_ORBIT_SEC: f32 = 100.0;
     const MAX_ORBIT_PRIM: f32 = 300.0;
     const ZERO_SHIFT: Vec2 = Vec2 { x: 0.0, y: -1.0 };
-    ///Multplier used to scale the `speed` value to mel. The mel scale reaches 10k Hz @
-    /// around 3.6k mel. This means a speed value of 1.0 is ~2.5k Hz.
-    pub const MEL_MULTIPLIER: f32 = 10.0;
     pub const ABS_BASE_FREQ: f32 = 440.0;
-
-    const SPEED_SCROLL_MULTIPLIER: f32 = 0.1;
 
     pub fn new_primary(at: Pos2, center: Pos2, slot: usize) -> Self {
         let radius = (at - center).length();
@@ -383,7 +378,7 @@ impl Orbital {
         }
     }
 
-    fn update_center(&mut self, new_center: Pos2) {
+    pub fn update_center(&mut self, new_center: Pos2) {
         self.center = new_center;
         let new_child_center = self.obj_pos();
         for c in &mut self.children {

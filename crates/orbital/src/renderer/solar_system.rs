@@ -23,15 +23,36 @@ pub struct SolarSystem {
 
 impl SolarSystem {
     pub fn new() -> Self {
-        SolarSystem {
+        let mut sys = SolarSystem {
             last_center: Pos2::ZERO,
             last_update: Instant::now(),
             orbitals: Vec::new(),
             paused: false,
+        };
+
+        //setup a base system. New is only called if there is no state at all,
+        // so that should be all right.
+        if let Some(slot) = sys.find_slot() {
+            sys.orbitals.push(Orbital::new_primary(
+                Pos2{x: 50.0, y: 50.0},
+                Pos2{x: 100.0, y: 100.0},
+                slot,
+            ));
         }
+
+
+        sys
     }
 
+
     pub fn paint(&mut self, center: Pos2, painter: &Painter) {
+
+        if self.last_center != center{
+            for orbital in &mut self.orbitals{
+                orbital.update_center(center);
+            }
+        }
+
         painter.add(Shape::Circle(CircleShape {
             center,
             radius: ObjTy::Sun.radius(),
@@ -52,6 +73,7 @@ impl SolarSystem {
         response: &Response,
         input: &InputState,
     ) {
+
         self.paused |= input.key_down(Key::Space);
         //update hover if there is any
         if let Some(hp) = response.hover_pos() {

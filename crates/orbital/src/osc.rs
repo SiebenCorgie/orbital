@@ -13,10 +13,12 @@ pub fn sigmoid(x: f32) -> f32 {
     x / (1.0 + x * x).sqrt()
 }
 
+#[allow(dead_code)]
 pub fn mel_to_freq(mel: f32) -> f32 {
     700.0 * (10.0f32.powf((mel + 20.0) / 2595.0) - 1.0)
 }
 
+#[allow(dead_code)]
 pub fn freq_to_mel(freq: f32) -> f32 {
     2595.0 * (1.0 + (freq / 700.0)).log10()
 }

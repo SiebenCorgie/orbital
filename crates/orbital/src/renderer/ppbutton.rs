@@ -25,6 +25,14 @@ impl<'a> Widget for PPButton<'a> {
             resp.mark_changed();
         }
 
+        let stroke = if resp.hovered(){
+            let mut s = Self::STROKE;
+            s.width = 2.0;
+            s
+        }else{
+            Self::STROKE
+        };
+
         let rect = painter.clip_rect();
         match self.state {
             true => {
@@ -38,7 +46,7 @@ impl<'a> Widget for PPButton<'a> {
                                 y: Self::ICOSIZE / 2.0,
                             },
                     ],
-                    Self::STROKE,
+                    stroke,
                 );
                 painter.line_segment(
                     [
@@ -53,7 +61,7 @@ impl<'a> Widget for PPButton<'a> {
                                 y: 0.0,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
                 painter.line_segment(
                     [
@@ -64,7 +72,7 @@ impl<'a> Widget for PPButton<'a> {
                                 y: 0.0,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
             }
             false => {
@@ -83,7 +91,7 @@ impl<'a> Widget for PPButton<'a> {
                                 y: Self::ICOSIZE / 2.0,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
                 painter.line_segment(
                     [
@@ -98,7 +106,7 @@ impl<'a> Widget for PPButton<'a> {
                                 y: Self::ICOSIZE / 2.0,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
             }
         }

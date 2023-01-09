@@ -60,6 +60,12 @@ impl<'a> Widget for Knob<'a, f32> {
         let rect = painter.clip_rect();
         let knob_offset = self.offset();
 
+        let stroke_width = if resp.hovered(){
+            2.0
+        }else{
+            1.0
+        };
+
         //find the location and update the value
         if resp.dragged() {
             if let Some(at) = ui.input().pointer.interact_pos() {
@@ -102,7 +108,7 @@ impl<'a> Widget for Knob<'a, f32> {
             rect.center(),
             knob_offset,
             Color32::TRANSPARENT,
-            Stroke::new(1.0, Color32::LIGHT_GRAY),
+            Stroke::new(stroke_width, Color32::LIGHT_GRAY),
         );
         let at = rotate_vec2(Vec2::Y * knob_offset, self.value_to_angle(*self.value));
         painter.circle(rect.center() + at, 2.0, Color32::WHITE, Stroke::none());
@@ -111,7 +117,7 @@ impl<'a> Widget for Knob<'a, f32> {
                 rect.center_bottom(),
                 rect.center_bottom() - Vec2 { x: 0.0, y: 10.0 },
             ],
-            Stroke::new(1.0, Color32::WHITE),
+            Stroke::new(stroke_width, Color32::WHITE),
         );
         painter.text(
             rect.center(),
@@ -152,6 +158,11 @@ impl<'a> Widget for Knob<'a, f64> {
             ui.allocate_painter(Vec2::splat(self.size), Sense::click_and_drag());
         let rect = painter.clip_rect();
         let knob_offset = self.offset();
+        let stroke_width = if resp.hovered(){
+            2.0
+        }else{
+            1.0
+        };
 
         //find the location and update the value
         if resp.dragged_by(egui::PointerButton::Primary) {
@@ -195,7 +206,7 @@ impl<'a> Widget for Knob<'a, f64> {
             rect.center(),
             knob_offset,
             Color32::TRANSPARENT,
-            Stroke::new(1.0, Color32::LIGHT_GRAY),
+            Stroke::new(stroke_width, Color32::LIGHT_GRAY),
         );
         let at = rotate_vec2(Vec2::Y * knob_offset, self.value_to_angle(*self.value));
         painter.circle(rect.center() + at, 2.0, Color32::WHITE, Stroke::none());
@@ -204,7 +215,7 @@ impl<'a> Widget for Knob<'a, f64> {
                 rect.center_bottom(),
                 rect.center_bottom() - Vec2 { x: 0.0, y: 10.0 },
             ],
-            Stroke::new(1.0, Color32::WHITE),
+            Stroke::new(stroke_width, Color32::WHITE),
         );
         painter.text(
             rect.center(),
@@ -256,6 +267,14 @@ impl<'a> Widget for GainSwitch<'a> {
 
         let rect = painter.clip_rect();
 
+        let stroke = if resp.hovered(){
+            let mut s = Self::STROKE;
+            s.width = 2.0;
+            s
+        }else{
+            Self::STROKE
+        };
+
         match self.value {
             GainType::Linear => {
                 painter.line_segment(
@@ -271,7 +290,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: Self::YOFF,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
 
                 painter.line_segment(
@@ -287,7 +306,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: -Self::YOFF,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
 
                 painter.line_segment(
@@ -303,7 +322,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: -Self::YOFF,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
 
                 painter.text(
@@ -328,7 +347,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: Self::YOFF,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
 
                 painter.add(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
@@ -356,7 +375,7 @@ impl<'a> Widget for GainSwitch<'a> {
                     ],
                     false,
                     Color32::TRANSPARENT,
-                    Self::STROKE,
+                    stroke
                 )));
 
                 painter.line_segment(
@@ -372,7 +391,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: -Self::YOFF,
                             },
                     ],
-                    Self::STROKE,
+                    stroke
                 );
 
                 painter.text(
