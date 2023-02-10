@@ -1,3 +1,4 @@
+use colorgrad::Gradient;
 use nih_plug::nih_log;
 use nih_plug_egui::egui::{epaint::CircleShape, Color32, Painter, Pos2, Shape, Stroke, Vec2};
 use serde_derive::{Deserialize, Serialize};
@@ -7,6 +8,17 @@ use crate::{
     com::{OrbitalState, SolarState},
     osc::OscType,
 };
+
+//Lazy_static color ramps for the orbital types.
+lazy_static::lazy_static! {
+    static ref RAMP_SUN: Gradient = colorgrad::yl_or_rd();
+    static ref RAMP_PLANET: Gradient = colorgrad::viridis();
+    static ref RAMP_MOON: Gradient = colorgrad::CustomGradient::new().colors(&[
+        colorgrad::Color::from_linear_rgba8(20, 20, 20, 255),
+        colorgrad::Color::from_linear_rgba8(200, 200, 200, 255)
+    ]).build().unwrap();
+    static ref RAMP_ASTROID: Gradient = colorgrad::viridis();
+}
 
 pub const TWOPI: f32 = 2.0 * PI;
 pub fn rotate_vec2(src: Vec2, angle: f32) -> Vec2 {
@@ -30,12 +42,12 @@ pub(super) enum ObjTy {
 
 impl ObjTy {
     ///Paints self.
-    pub(super) fn pain(&self, center: Pos2, highlight: bool, painter: &Painter) {
+    pub(super) fn paint(&self, speed_index: i32, center: Pos2, highlight: bool, painter: &Painter) {
         let mut shape = CircleShape {
             center,
             radius: self.radius(),
             stroke: Stroke::none(),
-            fill: self.color(),
+            fill: self.color(speed_index),
         };
         if highlight {
             shape.stroke = Stroke::new(Orbital::ORBIT_LINE_FAT, Color32::WHITE);
@@ -43,13 +55,19 @@ impl ObjTy {
         painter.add(Shape::Circle(shape));
     }
 
-    pub(super) fn color(&self) -> Color32 {
-        match self {
-            ObjTy::Sun => Color32::LIGHT_YELLOW,
-            ObjTy::Astroid => Color32::LIGHT_RED,
-            ObjTy::Moon => Color32::GRAY,
-            ObjTy::Planet => Color32::LIGHT_BLUE,
+    pub(super) fn color(&self, speed_index: i32) -> Color32 {
+        //map into linear rang -20..20
+        let alpha = ((speed_index as f64 + 20.0) / 40.0).clamp(0.0, 1.0);
+
+        let color = match self {
+            ObjTy::Sun => RAMP_SUN.at(alpha),
+            ObjTy::Astroid => RAMP_ASTROID.at(alpha),
+            ObjTy::Moon => RAMP_MOON.at(alpha),
+            ObjTy::Planet => RAMP_PLANET.at(alpha),
         }
+        .to_rgba8();
+
+        Color32::from_rgb(color[0], color[1], color[2])
     }
 
     pub(super) fn lower(&self) -> Self {
@@ -222,8 +240,12 @@ impl Orbital {
             tmp.paint(painter);
         }
 
-        self.obj
-            .pain(self.obj_pos(), self.planet_highlight, painter);
+        self.obj.paint(
+            self.speed_index,
+            self.obj_pos(),
+            self.planet_highlight,
+            painter,
+        );
     }
 
     fn obj_pos(&self) -> Pos2 {
@@ -250,19 +272,14 @@ impl Orbital {
         self.offset = angle;
     }
 
-    fn anim_speed(&self) -> f32{
-        //using offsetted speed sigmoid
-        1.0 + (self.speed_index as f32 / (1.0 + (self.speed_index as f32).abs()))
-    }
-
-    pub fn update(&mut self, delta: f32) {
-        self.phase = (self.phase + (self.anim_speed() * delta)) % TWOPI;
+    pub fn update(&mut self) {
+        self.phase = self.phase % TWOPI;
         let new_loc = self.obj_pos();
         for c in &mut self.children {
             //forward update center...
             c.center = new_loc;
             //..then call inner update
-            c.update(delta);
+            c.update();
         }
     }
 

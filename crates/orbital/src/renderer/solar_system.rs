@@ -1,7 +1,5 @@
-use std::time::Instant;
-
 use crossbeam::channel::Sender;
-use egui::{epaint::CircleShape, InputState, Key, Painter, PointerButton, Response, Shape, Stroke};
+use egui::{epaint::CircleShape, InputState, Painter, PointerButton, Response, Shape, Stroke};
 use nih_plug_egui::egui::Pos2;
 use serde_derive::{Deserialize, Serialize};
 
@@ -15,40 +13,32 @@ use super::orbital::{ObjTy, Orbital};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SolarSystem {
     last_center: Pos2,
-    #[serde(default = "Instant::now", skip)]
-    last_update: Instant,
     orbitals: Vec<Orbital>,
-    pub paused: bool,
 }
 
 impl SolarSystem {
     pub fn new() -> Self {
         let mut sys = SolarSystem {
             last_center: Pos2::ZERO,
-            last_update: Instant::now(),
             orbitals: Vec::new(),
-            paused: false,
         };
 
         //setup a base system. New is only called if there is no state at all,
         // so that should be all right.
         if let Some(slot) = sys.find_slot() {
             sys.orbitals.push(Orbital::new_primary(
-                Pos2{x: 50.0, y: 50.0},
-                Pos2{x: 100.0, y: 100.0},
+                Pos2 { x: 50.0, y: 50.0 },
+                Pos2 { x: 100.0, y: 100.0 },
                 slot,
             ));
         }
 
-
         sys
     }
 
-
     pub fn paint(&mut self, center: Pos2, painter: &Painter) {
-
-        if self.last_center != center{
-            for orbital in &mut self.orbitals{
+        if self.last_center != center {
+            for orbital in &mut self.orbitals {
                 orbital.update_center(center);
             }
         }
@@ -56,7 +46,7 @@ impl SolarSystem {
         painter.add(Shape::Circle(CircleShape {
             center,
             radius: ObjTy::Sun.radius(),
-            fill: ObjTy::Sun.color(),
+            fill: ObjTy::Sun.color(0), //TODO: Maybe animate based on currently played key?
             stroke: Stroke::none(),
         }));
 
@@ -73,14 +63,14 @@ impl SolarSystem {
         response: &Response,
         input: &InputState,
     ) {
-
-        self.paused |= input.key_down(Key::Space);
         //update hover if there is any
         if let Some(hp) = response.hover_pos() {
             for orb in &mut self.orbitals {
                 let _pause = orb.on_hover(hp);
             }
         }
+
+        let mut draw_state_changed = false;
         if let Some(interaction_pos) = input.pointer.interact_pos() {
             //track if any click was taken
             let mut click_taken = false;
@@ -93,6 +83,10 @@ impl SolarSystem {
                         break;
                     }
                 }
+            }
+
+            if click_taken {
+                draw_state_changed = true;
             }
 
             if response.dragged() {
@@ -117,6 +111,7 @@ impl SolarSystem {
                         slot,
                     ));
                 }
+                draw_state_changed = true;
             }
 
             let scroll_delta = input.scroll_delta.y / 1000.0;
@@ -124,6 +119,7 @@ impl SolarSystem {
                 for orbital in &mut self.orbitals {
                     orbital.on_scroll(scroll_delta, interaction_pos);
                 }
+                draw_state_changed = true;
             }
 
             if input.pointer.button_released(PointerButton::Secondary) {
@@ -132,15 +128,13 @@ impl SolarSystem {
                         self.orbitals.remove(orbit);
                     }
                 }
+                draw_state_changed = true;
             }
         }
 
-        //update inner animation, but only if not pausing
-        let delta = self.last_update.elapsed().as_secs_f32();
-        self.last_update = Instant::now();
-        if !self.paused {
+        if draw_state_changed {
             for orb in &mut self.orbitals {
-                orb.update(delta);
+                orb.update();
             }
         }
 

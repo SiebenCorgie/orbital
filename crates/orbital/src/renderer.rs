@@ -12,14 +12,14 @@ use nih_plug_egui::egui::{Sense, Widget};
 use self::{
     adsrgui::{GainSwitch, Knob},
     modswitch::ModSwitch,
-    ppbutton::PPButton,
-    solar_system::SolarSystem, switch::Switch,
+    solar_system::SolarSystem,
+    switch::Switch,
 };
 
 pub mod adsrgui;
 pub mod modswitch;
 pub mod orbital;
-pub mod ppbutton;
+//pub mod ppbutton;
 pub mod solar_system;
 pub mod switch;
 
@@ -63,7 +63,7 @@ impl Widget for &mut Renderer {
 
         let tp = egui::TopBottomPanel::top("Toppanel").show(ui.ctx(), |ui| {
             ui.horizontal_centered(|ui| {
-                ui.add(PPButton::new(&mut self.system.paused));
+                //ui.add(PPButton::new(&mut self.system.paused));
                 if ui.add(ModSwitch::new(&mut mod_ty)).changed() {
                     let _ = self
                         .msg_sender
@@ -125,13 +125,19 @@ impl Widget for &mut Renderer {
                     }
                 });
 
-                ui.vertical(|ui|{
-
-                    if ui.add(Switch::new(&mut reset_phase).with_label("Reset Phase")).changed(){
+                ui.vertical(|ui| {
+                    if ui
+                        .add(Switch::new(&mut reset_phase).with_label("Reset Phase"))
+                        .changed()
+                    {
                         let _ = self.msg_sender.send(ComMsg::ResetPhaseChanged(reset_phase));
                     }
+                });
+                ui.vertical(|ui| {
+                    if ui.button("Help").changed() {
+                        println!("Help");
+                    }
                 })
-
             })
         });
 
