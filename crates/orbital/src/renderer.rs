@@ -28,6 +28,7 @@ pub struct Renderer {
     pub system: SolarSystem,
     pub last_update: Instant,
     pub msg_sender: Sender<ComMsg>,
+    show_help: bool,
 }
 
 impl Widget for &mut Renderer {
@@ -61,85 +62,111 @@ impl Widget for &mut Renderer {
             .map(|g| g.clone())
             .unwrap_or(false);
 
-        let tp = egui::TopBottomPanel::top("Toppanel").show(ui.ctx(), |ui| {
-            ui.horizontal_centered(|ui| {
-                //ui.add(PPButton::new(&mut self.system.paused));
-                if ui.add(ModSwitch::new(&mut mod_ty)).changed() {
-                    let _ = self
-                        .msg_sender
-                        .send(ComMsg::ModRelationChanged(mod_ty.clone()));
-                }
+        let tp = egui::TopBottomPanel::top("Toppanel")
+            .max_height(50.0)
+            .resizable(false)
+            .min_height(10.0)
+            .show(ui.ctx(), |ui| {
+                ui.centered_and_justified(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            if ui.link("Help").clicked() {
+                                self.show_help = !self.show_help;
+                            }
+                            if ui.link("Creator").clicked() {
+                                let _ = open::that("https://siebencorgie.rs");
+                            }
+                            if ui.link("Donate").clicked() {
+                                let _ = open::that("https://ko-fi.com/siebencorgie");
+                            }
+                        });
 
-                if ui.add(GainSwitch::new(&mut gain_ty)).changed() {
-                    let _ = self.msg_sender.send(ComMsg::GainChange(gain_ty));
-                }
+                        ui.add_space(10.0);
 
-                ui.vertical(|ui| {
-                    if ui
-                        .add(Knob::new(&mut local_env.delay, 0.0, 1.0).with_label("Delay"))
-                        .changed()
-                    {
-                        env_changed = true;
-                    }
-                });
-                ui.vertical(|ui| {
-                    if ui
-                        .add(Knob::new(&mut local_env.attack, 0.0, 1.0).with_label("Attack"))
-                        .changed()
-                    {
-                        env_changed = true;
-                    }
-                });
-                ui.vertical(|ui| {
-                    if ui
-                        .add(Knob::new(&mut local_env.hold, 0.0, 1.0).with_label("Hold"))
-                        .changed()
-                    {
-                        env_changed = true;
-                    }
-                });
-                ui.vertical(|ui| {
-                    if ui
-                        .add(Knob::new(&mut local_env.decay, 0.0, 1.0).with_label("Decay"))
-                        .changed()
-                    {
-                        env_changed = true;
-                    }
-                });
-                ui.vertical(|ui| {
-                    if ui
-                        .add(
-                            Knob::new(&mut local_env.sustain_level, 0.0, 1.0).with_label("Sustain"),
-                        )
-                        .changed()
-                    {
-                        env_changed = true;
-                    }
-                });
-                ui.vertical(|ui| {
-                    if ui
-                        .add(Knob::new(&mut local_env.release, 0.0, 1.0).with_label("Release"))
-                        .changed()
-                    {
-                        env_changed = true;
-                    }
-                });
+                        //ui.add(PPButton::new(&mut self.system.paused));
+                        if ui.add(ModSwitch::new(&mut mod_ty)).changed() {
+                            let _ = self
+                                .msg_sender
+                                .send(ComMsg::ModRelationChanged(mod_ty.clone()));
+                        }
 
-                ui.vertical(|ui| {
-                    if ui
-                        .add(Switch::new(&mut reset_phase).with_label("Reset Phase"))
-                        .changed()
-                    {
-                        let _ = self.msg_sender.send(ComMsg::ResetPhaseChanged(reset_phase));
-                    }
-                });
-                ui.vertical(|ui| {
-                    if ui.button("Help").changed() {
-                        println!("Help");
-                    }
+                        if ui.add(GainSwitch::new(&mut gain_ty)).changed() {
+                            let _ = self.msg_sender.send(ComMsg::GainChange(gain_ty));
+                        }
+
+                        ui.add_space(10.0);
+
+                        ui.vertical(|ui| {
+                            if ui
+                                .add(Knob::new(&mut local_env.delay, 0.0, 1.0).with_label("Delay"))
+                                .changed()
+                            {
+                                env_changed = true;
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            if ui
+                                .add(
+                                    Knob::new(&mut local_env.attack, 0.0, 1.0).with_label("Attack"),
+                                )
+                                .changed()
+                            {
+                                env_changed = true;
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            if ui
+                                .add(Knob::new(&mut local_env.hold, 0.0, 1.0).with_label("Hold"))
+                                .changed()
+                            {
+                                env_changed = true;
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            if ui
+                                .add(Knob::new(&mut local_env.decay, 0.0, 1.0).with_label("Decay"))
+                                .changed()
+                            {
+                                env_changed = true;
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            if ui
+                                .add(
+                                    Knob::new(&mut local_env.sustain_level, 0.0, 1.0)
+                                        .with_label("Sustain"),
+                                )
+                                .changed()
+                            {
+                                env_changed = true;
+                            }
+                        });
+                        ui.vertical(|ui| {
+                            if ui
+                                .add(
+                                    Knob::new(&mut local_env.release, 0.0, 1.0)
+                                        .with_label("Release"),
+                                )
+                                .changed()
+                            {
+                                env_changed = true;
+                            }
+                        });
+
+                        ui.add_space(10.0);
+
+                        ui.vertical(|ui| {
+                            if ui
+                                .add(Switch::new(&mut reset_phase).with_label("Reset Phase"))
+                                .changed()
+                            {
+                                let _ =
+                                    self.msg_sender.send(ComMsg::ResetPhaseChanged(reset_phase));
+                            }
+                        });
+                    })
                 })
-            })
-        });
+            });
 
         if env_changed {
             let _ = self.msg_sender.send(ComMsg::EnvChanged(local_env));
@@ -152,6 +179,22 @@ impl Widget for &mut Renderer {
 
             self.system.paint(rect.center(), &painter);
         });
+
+        if self.show_help {
+            let _bottom_resp = egui::panel::TopBottomPanel::bottom("bottom_panel")
+                //.max_height(20.0)
+                .resizable(false)
+                .show(ui.ctx(), |ui| {
+                    //ui.centered_and_justified(|ui| {
+                        ui.label("
+There are four main interactions. :
+    1.: Click somewhere to create a new orbital, right click an orbital to delete it.
+    2.: Select and drag an existing orbit to adjust the influence of the orbital on its parent.
+    3.: Drag out a sibling orbital from an existing one by clicking and dragging out the edge.
+    4.: Scroll while hovering over an object to adjust its relative or absolute speed depending on the selected mode on the top bar.");
+                    //})
+                });
+        }
 
         tp.response.union(ctpanel.response)
     }
@@ -168,6 +211,7 @@ impl Renderer {
             params,
             last_update: Instant::now(),
             msg_sender: com_sender,
+            show_help: false,
             system,
         }
     }
