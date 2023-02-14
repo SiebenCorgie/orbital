@@ -29,7 +29,7 @@ pub enum ModulationType {
     Relative,
 }
 
-impl Default for ModulationType{
+impl Default for ModulationType {
     fn default() -> Self {
         ModulationType::Relative
     }
@@ -71,13 +71,14 @@ pub enum OscType {
 }
 
 impl OscType {
-
     //returns current frequency in relation to a base frequency
-    fn freq(&self, base_frequency: f32) -> f32{
+    fn freq(&self, base_frequency: f32) -> f32 {
         match self {
-            Self::Modulator { speed_index, .. } => base_frequency * 2.0f32.powf(*speed_index as f32),
-            Self::Primary { speed_index, ..} => base_frequency * 2.0f32.powf(*speed_index as f32),
-            Self::Off => 0.0
+            Self::Modulator { speed_index, .. } => {
+                base_frequency * 2.0f32.powf(*speed_index as f32)
+            }
+            Self::Primary { speed_index, .. } => base_frequency * 2.0f32.powf(*speed_index as f32),
+            Self::Off => 0.0,
         }
     }
 
@@ -97,9 +98,7 @@ impl OscType {
         mod_ty: &ModulationType,
     ) -> f32 {
         match self {
-            OscType::Primary {
-                ..
-            } => {
+            OscType::Primary { .. } => {
                 //calculate step by finding "our" base frequency, and weighting that with the percentile. Then advance
                 // via δ
                 let local_base = (self.freq(base_frequency)).max(0.0);
@@ -111,14 +110,11 @@ impl OscType {
                 range: _,
                 ..
             } => {
-                //depending on the modulation type, either scale by base frequency, or dont't
+                //depending on the modulation type, either scale by base frequency, or don't
                 match mod_ty {
                     //in this case, its easy, weigh with percentile and move base on our frequency
                     ModulationType::Absolute => {
-                        d_sec
-                            * self.freq(Orbital::ABS_BASE_FREQ)
-                            * frequency_multiplier
-                            * TWOPI
+                        d_sec * self.freq(Orbital::ABS_BASE_FREQ) * frequency_multiplier * TWOPI
                     }
                     ModulationType::Relative => {
                         //what we want is to take the base frequency of the tone, and modulate it with the current speed.
@@ -182,6 +178,8 @@ impl Oscillator {
     }
 
     fn sample(&self) -> f32 {
+        #[cfg(feature = "profile")]
+        puffin::profile_function!();
         (self.phase + self.offset).cos() * self.ty.volume()
     }
 }
@@ -216,7 +214,7 @@ impl Default for OscillatorBank {
             oscillators: [Oscillator::default(); Self::BANK_SIZE],
             mod_ty: ModulationType::default(),
             gain_ty: GainType::default(),
-            reset_phase: false
+            reset_phase: false,
         }
     }
 }
@@ -262,8 +260,8 @@ impl OscillatorBank {
         voice * Self::OSC_COUNT + osc
     }
 
-    pub fn reset_voice(&mut self, voice_idx: usize){
-        for i in 0..Self::OSC_COUNT{
+    pub fn reset_voice(&mut self, voice_idx: usize) {
+        for i in 0..Self::OSC_COUNT {
             let osc = &mut self.oscillators[Self::osc_index(voice_idx, i)];
             osc.phase = osc.offset;
         }
@@ -280,6 +278,9 @@ impl OscillatorBank {
         let mut div = 0;
         //atm. step all
         for osc_idx in 0..Self::OSC_COUNT {
+            #[cfg(feature = "profile")]
+            puffin::profile_scope!("Phase step");
+
             let osc_idx = Self::osc_index(voice, osc_idx);
             if self.oscillators[osc_idx].ty.is_off() {
                 continue;
@@ -312,6 +313,9 @@ impl OscillatorBank {
         // NOTE: Can't do that in the first loop, since any osc might only be partially updated at that point.
         // TODO: maybe sort bank in a way that we can do that at once?
         for osc_idx in 0..Self::OSC_COUNT {
+            #[cfg(feature = "profile")]
+            puffin::profile_scope!("Modulator merge");
+
             let osc_idx = Self::osc_index(voice, osc_idx);
             if self.oscillators[osc_idx].ty.is_off() {
                 continue;
@@ -344,6 +348,12 @@ impl OscillatorBank {
         buffer_time_start: Time,
     ) {
         let delta_sec = (1.0 / sample_rate) as Time;
+
+        #[cfg(feature = "profile")]
+        puffin::profile_function!(format!(
+            "OSC-Bank process Max: {} ms",
+            (buffer.len() as f64 * delta_sec) * 1000.0
+        ));
 
         let mut sample_time = buffer_time_start;
         for mut sample in buffer.iter_samples() {

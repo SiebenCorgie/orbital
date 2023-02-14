@@ -33,6 +33,9 @@ pub struct Orbital {
 
     ///last known time (in sec.)
     transport_time: Time,
+
+    #[cfg(feature = "profile")]
+    server: Option<puffin_http::Server>,
 }
 
 #[derive(Params)]
@@ -64,6 +67,8 @@ impl Default for Orbital {
             com_channel: crossbeam::channel::unbounded(),
             synth: OscArray::default(),
             transport_time: 0.0,
+            #[cfg(feature = "profile")]
+            server: None,
         }
     }
 }
@@ -127,9 +132,22 @@ impl Plugin for Orbital {
         &mut self,
         _bus_config: &BusConfig,
         _buffer_config: &BufferConfig,
-        _context: &mut impl InitContext<Self>,
+        context: &mut impl InitContext<Self>,
     ) -> bool {
         nih_log!("Init");
+
+        //signal polyphony.
+        context.set_current_voice_capacity(10);
+
+        //if profiling, add server
+        #[cfg(feature = "profile")]
+        {
+            nih_log!("Setting up profiling!");
+            puffin::set_scopes_on(true);
+            let server_addr = format!("127.0.0.1:{}", puffin_http::DEFAULT_PORT);
+            nih_log!("On: {}", server_addr);
+            self.server = Some(puffin_http::Server::new(&server_addr).unwrap());
+        }
 
         //init synth to current state, or default
         self.synth.bank.on_state_change(
@@ -171,14 +189,11 @@ impl Plugin for Orbital {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        /*
-        //advance time stamp either from daw time, or by counting buffer samples
-        if let Some(stamp) = context.transport().pos_seconds(){
-            self.transport_time = stamp as f32;
-        }else{
-            //calculate based on buffer size and sample rate
-            self.transport_time += (buffer.len() / buffer.channels()) as f32  / context.transport().sample_rate;
-        }*/
+        #[cfg(feature = "profile")]
+        puffin::GlobalProfiler::lock().new_frame();
+
+        #[cfg(feature = "profile")]
+        puffin::profile_function!();
 
         let buffer_length = buffer.len() as Time / context.transport().sample_rate as f64;
         let sample_time = 1.0 / context.transport().sample_rate as Time;
@@ -208,7 +223,7 @@ impl Plugin for Orbital {
                                 *p = new_gain.clone();
                             }
                             self.synth.bank.gain_ty = new_gain;
-                        },
+                        }
                         ComMsg::ResetPhaseChanged(new) => {
                             if let Ok(mut p) = self.params.reset_phase.try_lock() {
                                 *p = new;

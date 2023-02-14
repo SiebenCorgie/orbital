@@ -9,6 +9,11 @@ edition = "2021"
 # The `lib` artifact is needed for the standalone target
 crate-type = ["cdylib", "lib"]
 
+[features]
+
+default = ["profile"]
+profile = ["puffin", "puffin_http"]
+
 [dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["standalone"] }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git"}
@@ -21,3 +26,5 @@ serde_with = "2.1.0"
 colorgrad = "0.6"
 lazy_static = "1.4.0"
 open = "3.2.0"
+puffin = {version = "0.14.3", optional = true}
+puffin_http = {version = "0.11", optional = true}

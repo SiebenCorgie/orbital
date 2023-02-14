@@ -90,7 +90,7 @@ impl OscArray {
                 v.freq = midi_note_to_freq(note);
                 v.env.on_press(at);
 
-                if self.bank.reset_phase{
+                if self.bank.reset_phase {
                     self.bank.reset_voice(vidx);
                 }
 
@@ -115,8 +115,12 @@ impl OscArray {
     }
 
     pub fn process(&mut self, buffer: &mut Buffer, sample_rate: f32, buffer_time_start: Time) {
+        #[cfg(feature = "profile")]
+        puffin::profile_function!("synth main process");
         //check each voice once if we can turn it off
         for v in &mut self.voices {
+            #[cfg(feature = "profile")]
+            puffin::profile_scope!("Voice key-filter update");
             if v.env.after_sampling(buffer_time_start) {
                 v.state = VoiceState::Off;
                 v.env.reset();
