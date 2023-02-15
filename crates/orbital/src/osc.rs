@@ -177,6 +177,7 @@ impl Oscillator {
         }
     }
 
+    #[inline(always)]
     fn sample(&self) -> f32 {
         #[cfg(feature = "profile")]
         puffin::profile_function!();

@@ -70,6 +70,7 @@ impl Widget for &mut Renderer {
                 ui.centered_and_justified(|ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
+                            ui.spacing();
                             if ui.link("Help").clicked() {
                                 self.show_help = !self.show_help;
                             }
@@ -78,6 +79,9 @@ impl Widget for &mut Renderer {
                             }
                             if ui.link("Donate").clicked() {
                                 let _ = open::that("https://ko-fi.com/siebencorgie");
+                            }
+                            if ui.link("GitHub").clicked() {
+                                let _ = open::that("https://github.com/SiebenCorgie/orbital");
                             }
                         });
 
