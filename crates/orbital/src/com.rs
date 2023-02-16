@@ -3,21 +3,27 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     envelope::EnvelopeParams,
-    osc::{sigmoid, ModulationType, OscType},
+    osc::{modulator::ModulatorOsc, primary::PrimaryOsc, sigmoid, ModulationType, OscType},
 };
 
-#[derive(Clone, Debug)]
-pub struct OrbitalState {
-    ///Phase offset of this orbital
+#[derive(Clone)]
+pub struct SolarState {
+    pub primary_states: Vec<PrimaryState>,
+    pub modulator_states: Vec<ModulatorState>,
+}
+
+#[derive(Clone)]
+pub struct PrimaryState {
     pub offset: f32,
-    pub ty: OscType,
-    //oscillator slot
+    pub state: PrimaryOsc,
     pub slot: usize,
 }
 
-#[derive(Clone, Debug)]
-pub struct SolarState {
-    pub states: Vec<OrbitalState>,
+#[derive(Clone)]
+pub struct ModulatorState {
+    pub offset: f32,
+    pub state: ModulatorOsc,
+    pub slot: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Enum)]
@@ -26,13 +32,14 @@ pub enum GainType {
     Linear,
 }
 
-impl Default for GainType{
+impl Default for GainType {
     fn default() -> Self {
         GainType::Sigmoid
     }
 }
 
 impl GainType {
+    #[inline(always)]
     pub fn map(&self, value: f32) -> f32 {
         match self {
             GainType::Sigmoid => sigmoid(value),
@@ -49,12 +56,11 @@ impl GainType {
 }
 
 ///Communication messages from the renderer to the oscillator bank.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum ComMsg {
-    ///new solar state update
-    SolarState(SolarState),
+    StateChange(SolarState),
     EnvChanged(EnvelopeParams),
     ModRelationChanged(ModulationType),
     GainChange(GainType),
-    ResetPhaseChanged(bool)
+    ResetPhaseChanged(bool),
 }

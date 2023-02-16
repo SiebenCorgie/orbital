@@ -5,9 +5,14 @@ use serde_derive::{Deserialize, Serialize};
 use std::f32::consts::PI;
 
 use crate::{
-    com::{OrbitalState, SolarState},
-    osc::OscType,
+    com::{ModulatorState, PrimaryState, SolarState},
+    osc::{
+        modulator::{ModulatorOsc, ParentIndex},
+        primary::PrimaryOsc,
+    },
 };
+
+use super::solar_system::SlotAllocator;
 
 //Lazy_static color ramps for the orbital types.
 lazy_static::lazy_static! {
@@ -176,8 +181,8 @@ pub struct Orbital {
     interaction: Interaction,
 
     obj: ObjTy,
-    ///osc slot. Basically our 1:1 mapping between rendering and audio oscs
-    osc_slot: usize,
+    ///Depending on the ObjTy, maps 1:1 into the OscBank's primary or modulator banks
+    pub osc_slot: usize,
     children: Vec<Orbital>,
 }
 
@@ -283,23 +288,28 @@ impl Orbital {
         }
     }
 
-    pub fn on_drag_start(&mut self, at: Pos2, slot: Option<usize>) -> bool {
-        let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at), slot) {
-            (false, true, Some(slot)) => {
+    pub fn on_drag_start(&mut self, at: Pos2, slot_candidates: &mut Option<usize>) -> bool {
+        let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at)) {
+            (false, true) => {
                 //drag start on planet, start dragging out a child
-                self.interaction = Interaction::DragNewChild {
-                    slot,
-                    obj: self.obj.lower(),
-                    at,
-                };
-                true
+                // try to take the candidate. If not possible it was already taken and we can ignore
+                if let Some(slot) = slot_candidates.take() {
+                    self.interaction = Interaction::DragNewChild {
+                        slot,
+                        obj: self.obj.lower(),
+                        at,
+                    };
+                    true
+                } else {
+                    false
+                }
             }
-            (true, true, _) => {
+            (true, true) => {
                 self.interaction = Interaction::DragPlanet { at };
                 self.phase = 0.0;
                 true
             }
-            (true, false, _) => {
+            (true, false) => {
                 //dragging orbit, change orbit radius
                 self.interaction = Interaction::DragOrbit { at };
                 true
@@ -310,7 +320,7 @@ impl Orbital {
         //if unused, recurse
         if !used {
             for c in &mut self.children {
-                if c.on_drag_start(at, slot) {
+                if c.on_drag_start(at, slot_candidates) {
                     return true;
                 }
             }
@@ -418,18 +428,32 @@ impl Orbital {
     }
 
     //checks if self should be deleted
-    pub fn on_delete(&mut self, at: Pos2) -> bool {
+    pub fn on_delete(&mut self, at: Pos2, allocator: &mut SlotAllocator) -> bool {
         if self.is_on_orbit_handle(at) || self.is_on_planet(at) {
+            //deallocate children slots
+            for c in &self.children {
+                c.deallocat_all(allocator);
+            }
             true
         } else {
             //reverse through children, delete all that report it
             for i in (0..self.children.len()).rev() {
-                if self.children[i].on_delete(at) {
-                    self.children.remove(i);
+                if self.children[i].on_delete(at, allocator) {
+                    //remove the child from self, by definition this must be a modulator,
+                    // so we remove it from the allocator as well.
+                    let removed = self.children.remove(i);
+                    allocator.free_mod(removed.osc_slot);
                 }
             }
 
             false
+        }
+    }
+
+    fn deallocat_all(&self, allocator: &mut SlotAllocator) {
+        allocator.free_mod(self.osc_slot);
+        for c in &self.children {
+            c.deallocat_all(allocator);
         }
     }
 
@@ -485,41 +509,55 @@ impl Orbital {
     }
 
     ///appends self and the children to the state, returns the index self was added at
-    pub fn build_solar_state(&self, builder: &mut SolarState, parent_slot: Option<usize>) {
-        let ty = if let Some(slot) = parent_slot {
+    pub fn build_solar_state(&self, builder: &mut SolarState, parent_slot: Option<ParentIndex>) {
+        if let Some(slot) = parent_slot {
             let dist = self.radius - Self::MIN_ORBIT;
             //linear blend in orbit range
             let range = dist / (self.obj.max_orbit() - Self::MIN_ORBIT);
-            OscType::Modulator {
-                parent_osc_slot: slot,
-                speed_index: self.speed_index,
-                range: range.clamp(0.0, 1.0),
-            }
+
+            builder.modulator_states.push(ModulatorState {
+                state: ModulatorOsc {
+                    parent_osc_slot: slot,
+                    speed_index: self.speed_index,
+                    range: range.clamp(0.0, 1.0),
+                    is_on: true,
+                },
+                offset: self.phase,
+                slot: self.osc_slot,
+            });
         } else {
             let volume = self.radius / (self.obj.max_orbit() - Self::MIN_ORBIT);
-            OscType::Primary {
-                speed_index: self.speed_index,
-                volume,
-            }
+
+            builder.primary_states.push(PrimaryState {
+                offset: self.phase,
+                slot: self.osc_slot,
+                state: PrimaryOsc {
+                    speed_index: self.speed_index,
+                    volume,
+                    is_on: true,
+                },
+            });
+        }
+
+        //If we have a parent, pass self down as modulator, otherwise
+        // as primary.
+        let parent_slot = if parent_slot.is_some() {
+            ParentIndex::Modulator(self.osc_slot)
+        } else {
+            ParentIndex::Primary(self.osc_slot)
         };
-        //Push self
-        builder.states.push(OrbitalState {
-            offset: self.offset,
-            ty,
-            slot: self.osc_slot,
-        });
 
         if let Interaction::DragNewChild { slot, obj, at } = &self.interaction {
             //add new child already so we can hear it.
             let mut tmp = Orbital::new_primary(*at, self.obj_pos(), *slot);
             tmp.obj = *obj;
             tmp.radius = tmp.radius.clamp(Self::MIN_ORBIT, tmp.obj.max_orbit());
-            tmp.build_solar_state(builder, Some(self.osc_slot));
+            tmp.build_solar_state(builder, Some(parent_slot));
         }
 
         //do same with children
         for c in &self.children {
-            c.build_solar_state(builder, Some(self.osc_slot));
+            c.build_solar_state(builder, Some(parent_slot));
         }
     }
 }

@@ -1,5 +1,6 @@
 use crossbeam::channel::Sender;
 use egui::{epaint::CircleShape, InputState, Painter, PointerButton, Response, Shape, Stroke};
+use nih_plug::nih_log;
 use nih_plug_egui::egui::Pos2;
 use serde_derive::{Deserialize, Serialize};
 
@@ -11,9 +12,66 @@ use crate::{
 use super::orbital::{ObjTy, Orbital};
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct SlotAllocator {
+    primary_slots: [bool; OscillatorBank::PRIMARY_OSC_COUNT],
+    mod_slots: [bool; OscillatorBank::MOD_OSC_COUNT],
+}
+
+impl Default for SlotAllocator {
+    fn default() -> Self {
+        SlotAllocator {
+            primary_slots: [false; OscillatorBank::PRIMARY_OSC_COUNT],
+            mod_slots: [false; OscillatorBank::MOD_OSC_COUNT],
+        }
+    }
+}
+
+impl SlotAllocator {
+    fn allocate_primary(&mut self) -> Option<usize> {
+        for (slot_idx, slot_state) in self.primary_slots.iter_mut().enumerate() {
+            if !*slot_state {
+                *slot_state = true;
+                nih_log!("allocate primary on {}", slot_idx);
+                return Some(slot_idx);
+            }
+        }
+
+        None
+    }
+
+    pub fn free_primary(&mut self, slot: usize) {
+        if slot < OscillatorBank::PRIMARY_OSC_COUNT {
+            nih_log!("Free primary slot {}", slot);
+            self.primary_slots[slot] = false
+        }
+    }
+
+    fn allocate_mod(&mut self) -> Option<usize> {
+        for (slot_idx, slot_state) in self.mod_slots.iter_mut().enumerate() {
+            if !*slot_state {
+                *slot_state = true;
+                nih_log!("allocate mod on {}", slot_idx);
+                return Some(slot_idx);
+            }
+        }
+
+        None
+    }
+
+    pub fn free_mod(&mut self, slot: usize) {
+        if slot < OscillatorBank::MOD_OSC_COUNT {
+            nih_log!("Free mod slot {}", slot);
+            self.mod_slots[slot] = false
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SolarSystem {
     last_center: Pos2,
+    //Primary orbitals. Each child is by necessity a modulator
     orbitals: Vec<Orbital>,
+    allocator: SlotAllocator,
 }
 
 impl SolarSystem {
@@ -21,17 +79,12 @@ impl SolarSystem {
         let mut sys = SolarSystem {
             last_center: Pos2::ZERO,
             orbitals: Vec::new(),
+            allocator: SlotAllocator::default(),
         };
 
         //setup a base system. New is only called if there is no state at all,
         // so that should be all right.
-        if let Some(slot) = sys.find_slot() {
-            sys.orbitals.push(Orbital::new_primary(
-                Pos2 { x: 50.0, y: 50.0 },
-                Pos2 { x: 100.0, y: 100.0 },
-                slot,
-            ));
-        }
+        sys.insert_primary(Pos2 { x: 50.0, y: 50.0 }, Pos2 { x: 100.0, y: 100.0 });
 
         sys
     }
@@ -76,12 +129,17 @@ impl SolarSystem {
             let mut click_taken = false;
 
             if response.drag_started() {
-                let slot_candidate = self.find_slot();
+                let mut slot_candidate = self.allocator.allocate_mod();
                 for orbital in &mut self.orbitals {
-                    if orbital.on_drag_start(interaction_pos, slot_candidate) {
+                    if orbital.on_drag_start(interaction_pos, &mut slot_candidate) {
                         click_taken = true;
                         break;
                     }
+                }
+
+                //If the candidate slot was not taken, free it again
+                if let Some(candidate) = slot_candidate {
+                    self.allocator.free_mod(candidate)
                 }
             }
 
@@ -104,13 +162,7 @@ impl SolarSystem {
             //checkout response
             if response.clicked() && !click_taken {
                 //try to find an not yet used osc row
-                if let Some(slot) = self.find_slot() {
-                    self.orbitals.push(Orbital::new_primary(
-                        interaction_pos,
-                        self.last_center,
-                        slot,
-                    ));
-                }
+                self.insert_primary(interaction_pos, self.last_center);
                 draw_state_changed = true;
             }
 
@@ -124,8 +176,9 @@ impl SolarSystem {
 
             if input.pointer.button_released(PointerButton::Secondary) {
                 for orbit in (0..self.orbitals.len()).rev() {
-                    if self.orbitals[orbit].on_delete(interaction_pos) {
-                        self.orbitals.remove(orbit);
+                    if self.orbitals[orbit].on_delete(interaction_pos, &mut self.allocator) {
+                        let removed_primary = self.orbitals.remove(orbit);
+                        self.allocator.free_primary(removed_primary.osc_slot)
                     }
                 }
                 draw_state_changed = true;
@@ -139,14 +192,25 @@ impl SolarSystem {
         }
 
         //TODO handle breakdown
-        let _ = coms.send(ComMsg::SolarState(self.get_solar_state()));
+        let _ = coms.send(ComMsg::StateChange(self.get_solar_state()));
+    }
+
+    pub fn insert_primary(&mut self, at: Pos2, center: Pos2) {
+        let slot = if let Some(s) = self.allocator.allocate_primary() {
+            s
+        } else {
+            return;
+        };
+
+        self.orbitals.push(Orbital::new_primary(at, center, slot));
     }
 
     //builds the solar state from the current state. Used mainly to init
     // the synth when headless
     pub fn get_solar_state(&self) -> SolarState {
         let mut builder = SolarState {
-            states: Vec::with_capacity(OscillatorBank::BANK_SIZE),
+            primary_states: Vec::with_capacity(OscillatorBank::PRIMARY_OSC_COUNT),
+            modulator_states: Vec::with_capacity(OscillatorBank::MOD_OSC_COUNT),
         };
 
         for orb in &self.orbitals {
@@ -154,20 +218,5 @@ impl SolarSystem {
         }
 
         builder
-    }
-
-    fn find_slot(&mut self) -> Option<usize> {
-        //TODO: searching is currently garbage. Would be better to track.
-        'search: for candidate in 0..OscillatorBank::OSC_COUNT {
-            for o in &self.orbitals {
-                if o.slot_take(candidate) {
-                    continue 'search; //restart
-                }
-            }
-            return Some(candidate);
-        }
-
-        //NOTE: unreachable... and the search is garbage anyways
-        None
     }
 }

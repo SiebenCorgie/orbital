@@ -1,3 +1,5 @@
+#![feature(portable_simd)]
+
 use com::{ComMsg, GainType};
 use crossbeam::channel::{Receiver, Sender, TryRecvError};
 use envelope::EnvelopeParams;
@@ -204,7 +206,7 @@ impl Plugin for Orbital {
             match self.com_channel.1.try_recv() {
                 Ok(msg) => {
                     match msg {
-                        ComMsg::SolarState(s) => self.synth.bank.on_state_change(s),
+                        ComMsg::StateChange(s) => self.synth.bank.on_state_change(s),
                         ComMsg::ModRelationChanged(new) => {
                             if let Ok(mut mr) = self.params.mod_ty.try_lock() {
                                 *mr = new.clone();

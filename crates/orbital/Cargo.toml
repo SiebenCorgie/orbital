@@ -26,5 +26,7 @@ serde_with = "2.1.0"
 colorgrad = "0.6"
 lazy_static = "1.4.0"
 open = "3.2.0"
+#Simd sin/cos
+sleef = "0.3.0"
 puffin = {version = "0.14.3", optional = true}
 puffin_http = {version = "0.11", optional = true}

@@ -1,14 +1,26 @@
-use nih_plug::prelude::{Buffer, Enum};
+use std::simd;
+
+use nih_plug::{
+    nih_log,
+    prelude::{Buffer, Enum},
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use sleef::Sleef;
 
 use crate::{
-    com::{GainType, OrbitalState, SolarState},
+    com::{GainType, ModulatorState, PrimaryState, SolarState},
     osc_array::OscVoiceState,
     renderer::orbital::{Orbital, TWOPI},
     Time,
 };
 
+use self::{modulator::ModulatorOsc, primary::PrimaryOsc};
+
+pub mod modulator;
+pub mod primary;
+
+#[inline(always)]
 pub fn sigmoid(x: f32) -> f32 {
     x / (1.0 + x * x).sqrt()
 }
@@ -153,7 +165,9 @@ impl OscType {
 /// Single oscillator state. Used to sync graphics and audio engine as well as
 /// saving the state
 #[derive(Serialize, Deserialize, Clone, Copy)]
-pub struct Oscillator {
+pub struct Oscillator<S> {
+    //Oscillator state type
+    osc: S,
     ///Combined modulation percentile. When generation the next value the base_frequency
     /// is slowed down/ speed up by this
     mod_multiplier: f32,
@@ -164,10 +178,9 @@ pub struct Oscillator {
     offset: f32,
     ///last known phase of the osc (0..2π) in radiant.
     phase: f32,
-    ty: OscType,
 }
 
-impl Oscillator {
+impl<S> Oscillator<S> {
     fn freq_multiplier(&self) -> f32 {
         if self.mod_counter == 0 {
             1.0
@@ -177,22 +190,24 @@ impl Oscillator {
         }
     }
 
+    /*
     #[inline(always)]
     fn sample(&self) -> f32 {
         #[cfg(feature = "profile")]
         puffin::profile_function!();
         (self.phase + self.offset).cos() * self.ty.volume()
     }
+    */
 }
 
-impl Default for Oscillator {
+impl<S: Default> Default for Oscillator<S> {
     fn default() -> Self {
         Oscillator {
+            osc: S::default(),
             mod_multiplier: 1.0,
             mod_counter: 0,
             offset: 0.0,
             phase: 0.0,
-            ty: OscType::Off,
         }
     }
 }
@@ -200,9 +215,11 @@ impl Default for Oscillator {
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OscillatorBank {
-    ///Stores *all* oscillators. The children are declared in form of indices within the osc structs.
-    #[serde_as(as = "[_; OscillatorBank::BANK_SIZE]")]
-    oscillators: [Oscillator; Self::BANK_SIZE],
+    ///Stores *all* primary oscillators. The children are declared in form of indices within the osc structs.
+    #[serde_as(as = "[_; OscillatorBank::PRIMARY_BANK_SIZE]")]
+    primary_osc: [Oscillator<PrimaryOsc>; Self::PRIMARY_BANK_SIZE],
+    #[serde_as(as = "[_; OscillatorBank::MODULATOR_BANK_SIZE]")]
+    modulator_osc: [Oscillator<ModulatorOsc>; Self::MODULATOR_BANK_SIZE],
     pub mod_ty: ModulationType,
     pub gain_ty: GainType,
     pub reset_phase: bool,
@@ -212,7 +229,8 @@ impl Default for OscillatorBank {
     fn default() -> Self {
         //pre allocating oscillator banks. But vec allows us to outgrow if neede
         OscillatorBank {
-            oscillators: [Oscillator::default(); Self::BANK_SIZE],
+            primary_osc: [Oscillator::default(); Self::PRIMARY_BANK_SIZE],
+            modulator_osc: [Oscillator::default(); Self::MODULATOR_BANK_SIZE],
             mod_ty: ModulationType::default(),
             gain_ty: GainType::default(),
             reset_phase: false,
@@ -223,49 +241,111 @@ impl Default for OscillatorBank {
 impl OscillatorBank {
     ///Number of maximal active voices.
     pub const VOICE_COUNT: usize = 10;
-    ///Number of oscillators per voice.
-    pub const OSC_COUNT: usize = 16;
+    ///Number of primary oscillators per voice.
+    pub const PRIMARY_OSC_COUNT: usize = 8;
+    ///Number of modulator oscillators per voice.
+    pub const MOD_OSC_COUNT: usize = 16;
 
-    ///Number of oscs in the bank
-    pub const BANK_SIZE: usize = Self::VOICE_COUNT * Self::OSC_COUNT;
+    pub const PRIMARY_BANK_SIZE: usize = Self::VOICE_COUNT * Self::PRIMARY_OSC_COUNT;
+    pub const MODULATOR_BANK_SIZE: usize = Self::VOICE_COUNT * Self::MOD_OSC_COUNT;
 
     pub fn on_state_change(&mut self, new: SolarState) {
         //turn off all to not keep anything "on" by misstake.
-        for o in &mut self.oscillators {
-            o.ty = OscType::Off;
+        for o in &mut self.primary_osc {
+            o.osc.is_on = false;
+        }
+
+        for o in &mut self.modulator_osc {
+            o.osc.is_on = false;
         }
 
         //reconifg all oscs
         // TODO: do diff and lerp between changes, reset on type change
-        for state in new.states.into_iter() {
-            //set all oscillators on the line `idx` to the given state
-            let OrbitalState { offset, ty, slot } = state;
-            self.on_osc_line(slot, |osc| {
-                osc.ty = ty;
+
+        for pstate in new.primary_states {
+            let PrimaryState {
+                offset,
+                state,
+                slot,
+            } = pstate;
+            self.on_primary_osc_line(slot, |osc| {
                 osc.offset = offset;
-            });
+                osc.osc = state;
+            })
+        }
+
+        for pstate in new.modulator_states {
+            let ModulatorState {
+                offset,
+                state,
+                slot,
+            } = pstate;
+            self.on_modulator_osc_line(slot, |osc| {
+                osc.offset = offset;
+                osc.osc = state;
+            })
         }
     }
 
-    fn on_osc_line(&mut self, line: usize, f: impl Fn(&mut Oscillator)) {
-        if line >= Self::OSC_COUNT {
+    fn on_primary_osc_line(&mut self, line: usize, f: impl Fn(&mut Oscillator<PrimaryOsc>)) {
+        if line >= Self::PRIMARY_OSC_COUNT {
             return;
         }
 
         for vidx in 0..Self::VOICE_COUNT {
-            f(&mut self.oscillators[Self::osc_index(vidx, line)]);
+            f(&mut self.primary_osc[Self::primary_osc_index(vidx, line)]);
         }
     }
 
-    fn osc_index(voice: usize, osc: usize) -> usize {
-        voice * Self::OSC_COUNT + osc
+    fn on_modulator_osc_line(&mut self, line: usize, f: impl Fn(&mut Oscillator<ModulatorOsc>)) {
+        if line >= Self::MOD_OSC_COUNT {
+            return;
+        }
+
+        for vidx in 0..Self::VOICE_COUNT {
+            f(&mut self.modulator_osc[Self::modulator_osc_index(vidx, line)]);
+        }
     }
 
+    #[inline(always)]
+    fn primary_osc_index(voice: usize, osc: usize) -> usize {
+        voice * Self::PRIMARY_OSC_COUNT + osc
+    }
+
+    #[inline(always)]
+    fn modulator_osc_index(voice: usize, osc: usize) -> usize {
+        voice * Self::MOD_OSC_COUNT + osc
+    }
     pub fn reset_voice(&mut self, voice_idx: usize) {
-        for i in 0..Self::OSC_COUNT {
-            let osc = &mut self.oscillators[Self::osc_index(voice_idx, i)];
+        for i in 0..Self::PRIMARY_OSC_COUNT {
+            let osc = &mut self.primary_osc[Self::primary_osc_index(voice_idx, i)];
             osc.phase = osc.offset;
         }
+
+        for i in 0..Self::MOD_OSC_COUNT {
+            let osc = &mut self.modulator_osc[Self::modulator_osc_index(voice_idx, i)];
+            osc.phase = osc.offset;
+        }
+    }
+
+    //do primary step, returns new phases
+    fn primary_step(
+        bases: simd::f32x4,
+        multiplier: simd::f32x4,
+        current_phases: simd::f32x4,
+        d_sec: f32,
+    ) -> simd::f32x4 {
+        let two_pi = simd::f32x4::splat(TWOPI);
+        let final_freq = bases * multiplier;
+
+        let delta_phases = simd::f32x4::splat(d_sec) * final_freq * two_pi;
+
+        sleef::f32x::fmodf(current_phases + delta_phases, two_pi)
+    }
+
+    fn primary_sample(phases: simd::f32x4, offsets: simd::f32x4, volume: simd::f32x4) -> f32 {
+        let res = sleef::f32x::cos_u10(phases + offsets) * volume;
+        res[0] + res[1] + res[2] + res[3]
     }
 
     ///Steps the whole voice-bank once, returning a modulated value based on "base_frequency".
@@ -273,10 +353,90 @@ impl OscillatorBank {
         //we have two stepping procedures. One is the "high resolution"
         // phase.cos() for base osciis, and the lower resolution LFO type cos-less approximation.
         // TODO: implement https://www.cl.cam.ac.uk/~am21/hakmemc.html @ 151
+        #[cfg(feature = "profile")]
+        puffin::profile_function!();
 
+        // we basically iterate over all ocs's here
+        // and advance the oscillator's phase based on its current configuration
+        // and the given `sample_delta`.
+        //
+        // However, since we want to SIMD this its a little bit uglier.
+        // We still iterate over all, but only collect which osc's need stepping.
+        // Whenever we fill a full simd lane we execute
+        // it as well.
+        //
+        // Since we have have two types of OSC (Primary and Modulator) we also collect both types. The modulator functions differently
+        // based on the current modulation type, but thats uniform over all, so we don't have to swizzle that out.
+
+        let mut count;
+        let mut accum = 0.0;
+        let mut local_bases = simd::f32x4::splat(0.0);
+        let mut local_multiplier = simd::f32x4::splat(1.0);
+        let mut local_current_phase = simd::f32x4::splat(0.0);
+        let mut local_volumes = simd::f32x4::splat(0.0);
+        let mut local_phase_offsets = simd::f32x4::splat(0.0);
+
+        assert!(Self::PRIMARY_OSC_COUNT % 4 == 0);
+        assert!(Self::MOD_OSC_COUNT % 4 == 0);
+
+        for lane_index in 0..(Self::PRIMARY_OSC_COUNT / 4) {
+            #[cfg(feature = "profile")]
+            puffin::profile_scope!("Primary phase step");
+
+            let offset = lane_index * 4;
+            count = 0;
+            //fill primray oscillators into simd lanes
+            for i in 0..4 {
+                let idx = Self::primary_osc_index(voice, offset + i);
+                let osc = &mut self.primary_osc[idx];
+
+                local_bases[i] = osc.osc.freq(base_frequency).max(0.0);
+                local_multiplier[i] = osc.freq_multiplier();
+                local_current_phase[i] = osc.phase;
+                local_phase_offsets[i] = osc.offset;
+                local_volumes[i] = osc.osc.volume;
+
+                if osc.osc.is_on {
+                    //increas count for correct divisor
+                    count += 1;
+                } else {
+                    local_volumes[i] = 0.0;
+                }
+            }
+
+            //calculate lane results
+            let result = Self::primary_step(
+                local_bases,
+                local_multiplier,
+                local_current_phase,
+                sample_delta,
+            );
+
+            //calculate accumulated samples
+            if count > 0 {
+                accum +=
+                    Self::primary_sample(result, local_phase_offsets, local_volumes) / count as f32;
+            }
+
+            //write phase results to osc's and reset modulator
+            for i in 0..4 {
+                let idx = Self::primary_osc_index(voice, offset + i);
+                let mut osc = &mut self.primary_osc[idx];
+                osc.phase = result[i];
+                osc.mod_counter = 0;
+                osc.mod_multiplier = 0.0;
+            }
+        }
+
+        //Now evaluate all modulators
+        //
+
+        /*
         //Accumulates all primary values
         let mut accumulated = 0.0;
         let mut div = 0;
+
+
         //atm. step all
         for osc_idx in 0..Self::OSC_COUNT {
             #[cfg(feature = "profile")]
@@ -312,7 +472,10 @@ impl OscillatorBank {
 
         //now update all parents of any secondary osc.
         // NOTE: Can't do that in the first loop, since any osc might only be partially updated at that point.
-        // TODO: maybe sort bank in a way that we can do that at once?
+
+        //For simd purpose we collect all "to merge" oscillators
+        // and whenever we fill a line we execute a simd'd sample step and write that back
+
         for osc_idx in 0..Self::OSC_COUNT {
             #[cfg(feature = "profile")]
             puffin::profile_scope!("Modulator merge");
@@ -327,6 +490,8 @@ impl OscillatorBank {
                 ..
             } = self.oscillators[osc_idx].ty
             {
+                #[cfg(feature = "profile")]
+                puffin::profile_scope!("PerModMerge");
                 //NOTE: we got a phase for the mod oscillator. However the cos is (-1 .. 1). So we weight by range into (-range .. range).
                 //      Next we want to only modulate the range around (100% - range .. 100% + range), so we add 1
                 let modulatio_value = (self.oscillators[osc_idx].sample() * range) + 1.0;
@@ -336,8 +501,10 @@ impl OscillatorBank {
             }
         }
 
-        //we normalze "per voice"
+        //we normalise "per voice"
         accumulated / div as f32
+        */
+        accum
     }
 
     //Fills the buffer with sound jo
@@ -348,6 +515,12 @@ impl OscillatorBank {
         sample_rate: f32,
         buffer_time_start: Time,
     ) {
+        //PERFORMANCE:
+        // Currently taking an max-avg of 8ms
+        // all phase step: 2ms
+        // all merge:      4ms
+        // + overhead
+
         let delta_sec = (1.0 / sample_rate) as Time;
 
         #[cfg(feature = "profile")]
