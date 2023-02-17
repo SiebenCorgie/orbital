@@ -14,21 +14,19 @@ A cosmic, polyphonic, additive FM synthesizer.
 - Relative (to the oscillator frequency) and absolute frequency modulation: This allows you to either model interesting absolute soundscapes, or soundscapes that change relative to the currently played key.
 - Polyphony: Up to 10 concurrent voices.
 - Sample correct midi event offsets
-- 5 stage ADSR Midi-filter including: delay, attack, hold, decay, sustain level, release.
-- High quality sin based oscillators
+- 5 stage ADSR Midi-filter including: delay, attack, hold, decay, sustain level and release.
+- High quality cos based oscillators
 - Two voice composition options: Linear (clear for less voices), Sigmoid (Warm distortion for more voices).
-
-## Planed features
-- SIMD implementation: Currently all oscillators in a bank are processed sequentially using sine waves. This produces a high quality result. The CPU load hover could be reduced dramatically if SIMD and, for lower frequencies a sine approximation was used.
-- Phase modulation and amplitude: Maybe let the user chose the type of modulation on a *per planet* basis.
+- SIMD oscillator implementation using [portable-simd](https://github.com/rust-lang/portable-simd) and [sleef-rs](https://crates.io/crates/sleef).
 
 ## Getting the plugin
 
 There are two ways: Either you use the build instructions below, or you write me on one of the platforms mentioned on [siebencorgie.rs](https://siebencorgie.rs) and I'll try to send you a recent version when I have time.
 
 ## Building 
-To build, install a [Rust toolchain and Cargo](https://www.rust-lang.org/). After that issue the following command in a terminal:
+To build, install a [Rust toolchain and Cargo](https://www.rust-lang.org/). Make sure you are using the `nightly` toolchain.
 
+After that issue the following command in a terminal:
 ``` shell
 cargo xtask bundle orbital --release
 ```
@@ -48,7 +46,7 @@ The speed of an oscillator is (octave wise) increased or decreased when scrollin
 This is the main interface to the synth. However, apart from a standard [ADSR](https://www.wikiaudio.org/adsr-envelope/) filter three parameters at the top are interesting. The most left parameter changes the relation between a modulator and its parent. When set to *relative* the modulator takes the parents frequency and changes that. When set to *absolute* the reference frequency will always be 440 Hz.
 The next parameter changes how voices are mixed. Linear takes the *ground truth* output and clamps it to -1.0 - 1.0. [Sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) uses a function to map any value in that range.
 
-Finally you can enable *reset phase*, which will reset the internal oscillator before playing a new not. This is interesting if you want to be sure that successive played notes sound the same.
+Finally you can enable *reset phase*, which will reset the internal oscillator before playing a new note. This is interesting if you want to be sure that successive played notes sound the same.
 
 ## License
 
