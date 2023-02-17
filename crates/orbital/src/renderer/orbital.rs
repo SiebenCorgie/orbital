@@ -22,7 +22,7 @@ lazy_static::lazy_static! {
         colorgrad::Color::from_linear_rgba8(20, 20, 20, 255),
         colorgrad::Color::from_linear_rgba8(200, 200, 200, 255)
     ]).build().unwrap();
-    static ref RAMP_ASTROID: Gradient = colorgrad::viridis();
+    static ref RAMP_ASTROID: Gradient = colorgrad::inferno();
 }
 
 pub const TWOPI: f32 = 2.0 * PI;
