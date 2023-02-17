@@ -494,20 +494,6 @@ impl Orbital {
         is_interactable
     }
 
-    pub fn slot_take(&self, slot: usize) -> bool {
-        if self.osc_slot == slot {
-            return true;
-        }
-
-        for c in &self.children {
-            if c.slot_take(slot) {
-                return true;
-            }
-        }
-
-        false
-    }
-
     ///appends self and the children to the state, returns the index self was added at
     pub fn build_solar_state(&self, builder: &mut SolarState, parent_slot: Option<ParentIndex>) {
         if let Some(slot) = parent_slot {

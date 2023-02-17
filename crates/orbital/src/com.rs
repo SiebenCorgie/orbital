@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     envelope::EnvelopeParams,
-    osc::{modulator::ModulatorOsc, primary::PrimaryOsc, sigmoid, ModulationType, OscType},
+    osc::{modulator::ModulatorOsc, primary::PrimaryOsc, sigmoid, ModulationType},
 };
 
 #[derive(Clone)]
