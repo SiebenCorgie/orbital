@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum ParentIndex {
     Primary(usize),
     Modulator(usize),
@@ -8,7 +8,7 @@ pub enum ParentIndex {
 
 ///Single primary oscillator. Does nothing on its own, but collecting the state.
 /// All the logic is implemented in the parent osc.rs or one of the helpers.
-#[derive(Serialize, Deserialize, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct ModulatorOsc {
     pub parent_osc_slot: ParentIndex,
     pub is_on: bool,
@@ -24,7 +24,7 @@ pub struct ModulatorOsc {
 
 impl ModulatorOsc {
     #[inline(always)]
-    fn freq(&self, base_frequency: f32) -> f32 {
+    pub fn freq(&self, base_frequency: f32) -> f32 {
         base_frequency * 2.0f32.powf(self.speed_index as f32)
     }
 }

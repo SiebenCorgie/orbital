@@ -10,6 +10,7 @@ use sleef::Sleef;
 
 use crate::{
     com::{GainType, ModulatorState, PrimaryState, SolarState},
+    osc::modulator::ParentIndex,
     osc_array::OscVoiceState,
     renderer::orbital::{Orbital, TWOPI},
     Time,
@@ -113,7 +114,7 @@ impl OscType {
             OscType::Primary { .. } => {
                 //calculate step by finding "our" base frequency, and weighting that with the percentile. Then advance
                 // via δ
-                let local_base = (self.freq(base_frequency)).max(0.0);
+                let local_base = self.freq(base_frequency).max(0.0);
                 let final_freq = local_base * frequency_multiplier;
                 d_sec * final_freq * TWOPI
             }
@@ -250,6 +251,8 @@ impl OscillatorBank {
     pub const MODULATOR_BANK_SIZE: usize = Self::VOICE_COUNT * Self::MOD_OSC_COUNT;
 
     pub fn on_state_change(&mut self, new: SolarState) {
+        nih_log!("State change");
+
         //turn off all to not keep anything "on" by misstake.
         for o in &mut self.primary_osc {
             o.osc.is_on = false;
@@ -268,6 +271,7 @@ impl OscillatorBank {
                 state,
                 slot,
             } = pstate;
+            nih_log!("  [{}]: {:?}", slot, state);
             self.on_primary_osc_line(slot, |osc| {
                 osc.offset = offset;
                 osc.osc = state;
@@ -280,6 +284,8 @@ impl OscillatorBank {
                 state,
                 slot,
             } = pstate;
+
+            nih_log!("  [{}]: {:?}", slot, state);
             self.on_modulator_osc_line(slot, |osc| {
                 osc.offset = offset;
                 osc.osc = state;
@@ -317,23 +323,24 @@ impl OscillatorBank {
         voice * Self::MOD_OSC_COUNT + osc
     }
     pub fn reset_voice(&mut self, voice_idx: usize) {
+        nih_log!("Resetting {}", voice_idx);
         for i in 0..Self::PRIMARY_OSC_COUNT {
             let osc = &mut self.primary_osc[Self::primary_osc_index(voice_idx, i)];
-            osc.phase = osc.offset;
+            osc.phase = 0.0;
         }
 
         for i in 0..Self::MOD_OSC_COUNT {
             let osc = &mut self.modulator_osc[Self::modulator_osc_index(voice_idx, i)];
-            osc.phase = osc.offset;
+            osc.phase = 0.0;
         }
     }
 
     //do primary step, returns new phases
-    fn primary_step(
-        bases: simd::f32x4,
-        multiplier: simd::f32x4,
-        current_phases: simd::f32x4,
-        d_sec: f32,
+    fn phase_step(
+        bases: simd::f32x4,          //base frequency this step is derived from
+        multiplier: simd::f32x4,     //osc specific speed-up
+        current_phases: simd::f32x4, //current osc's phase
+        d_sec: f32,                  //time per sample
     ) -> simd::f32x4 {
         let two_pi = simd::f32x4::splat(TWOPI);
         let final_freq = bases * multiplier;
@@ -343,8 +350,14 @@ impl OscillatorBank {
         sleef::f32x::fmodf(current_phases + delta_phases, two_pi)
     }
 
+    #[inline(always)]
+    fn simd_sample(phases: simd::f32x4, offsets: simd::f32x4, volume: simd::f32x4) -> simd::f32x4 {
+        sleef::f32x::cos_u10(phases + offsets) * volume
+    }
+
+    #[inline(always)]
     fn primary_sample(phases: simd::f32x4, offsets: simd::f32x4, volume: simd::f32x4) -> f32 {
-        let res = sleef::f32x::cos_u10(phases + offsets) * volume;
+        let res = Self::simd_sample(phases, offsets, volume);
         res[0] + res[1] + res[2] + res[3]
     }
 
@@ -379,6 +392,131 @@ impl OscillatorBank {
         assert!(Self::PRIMARY_OSC_COUNT % 4 == 0);
         assert!(Self::MOD_OSC_COUNT % 4 == 0);
 
+        //phase step modulators, and upate parens's (possibly primary) oscillators
+        // modulation value.
+        // TODO: If the modulation strategy is "Absolute" we could
+        //       Do the phase stepping for the whole bank in one pass instead of "per-voice"
+        for lane_idx in 0..(Self::MOD_OSC_COUNT / 4) {
+            let mut count = 0;
+            let offset = lane_idx * 4;
+            match self.mod_ty {
+                ModulationType::Absolute => {
+                    //for absolute modulation we use the ABS_BASE_FREQ for modulation offset, which is the same for all.
+                    // This works similarly to the absolute one, but our base frequency is a static
+                    // one instead of a voice based one.
+                    for i in 0..4 {
+                        let idx = Self::modulator_osc_index(voice, offset + i);
+                        let osc = &mut self.modulator_osc[idx];
+                        local_bases[i] = osc.osc.freq(Orbital::ABS_BASE_FREQ).max(0.0);
+                        local_multiplier[i] = osc.freq_multiplier();
+                        local_current_phase[i] = osc.phase;
+                        local_phase_offsets[i] = osc.offset;
+                        if osc.osc.is_on {
+                            count += 1;
+                        }
+                    }
+                }
+                ModulationType::Relative => {
+                    //At relative we use the voice's base frequency for
+                    // and modulate that relatively.
+                    //
+                    // This is basically the same as the primary step below, but we are writing the result back to the
+                    // parents instead
+                    for i in 0..4 {
+                        let idx = Self::modulator_osc_index(voice, offset + i);
+                        let osc = &mut self.modulator_osc[idx];
+                        local_bases[i] = osc.osc.freq(base_frequency).max(0.0);
+                        local_multiplier[i] = osc.freq_multiplier();
+                        local_current_phase[i] = osc.phase;
+                        local_phase_offsets[i] = osc.offset;
+                        if osc.osc.is_on {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+
+            if count > 0 {
+                //after loading, do the phase step
+                let result = Self::phase_step(
+                    local_bases,
+                    local_multiplier,
+                    local_current_phase,
+                    sample_delta,
+                );
+
+                //Write back the new phase and reset the modulation values for all. Those will be re-written in the step
+                // below
+                for i in 0..4 {
+                    let idx = Self::modulator_osc_index(voice, offset + i);
+                    let osc = &mut self.modulator_osc[idx];
+
+                    osc.phase = result[i];
+                    osc.mod_counter = 0;
+                    osc.mod_multiplier = 0.0;
+                }
+            } else {
+                //in that case, just reset
+                for i in 0..4 {
+                    let idx = Self::modulator_osc_index(voice, offset + i);
+                    let osc = &mut self.modulator_osc[idx];
+                    osc.mod_counter = 0;
+                    osc.mod_multiplier = 0.0;
+                }
+            }
+        }
+
+        //We now have the updated modulators, therefore, we can iterate through all modulators
+        // and update the parent's multiplier value.
+        // Note that we can't do that in the first loop, since not all modulators might have stepped their phase yet,
+        // which would produce a messy sampling.
+        for lane_idx in 0..(Self::MOD_OSC_COUNT / 4) {
+            let offset = lane_idx * 4;
+            for i in 0..4 {
+                let idx = Self::modulator_osc_index(voice, offset + i);
+                let osc = &mut self.modulator_osc[idx];
+
+                local_current_phase[i] = osc.phase;
+                local_phase_offsets[i] = osc.offset;
+                local_volumes[i] = osc.osc.range;
+                if !osc.osc.is_on {
+                    local_volumes[i] = 0.0;
+                }
+            }
+
+            //Now evaluate the modulation values
+            //NOTE: we got a phase for the mod oscillator. However the cos is (-1 .. 1). So we weight by range into (-range .. range).
+            //      Next we want to only modulate the range around (100% - range .. 100% + range), so we add 1
+            let modulation_samples = simd::f32x4::splat(1.0)
+                + Self::simd_sample(local_current_phase, local_phase_offsets, local_volumes);
+
+            //now write the modulation valuse to the parents
+            for i in 0..4 {
+                let idx = Self::modulator_osc_index(voice, offset + i);
+                let osc = &self.modulator_osc[idx];
+
+                //only write to parent osc if osc is actually on
+                if osc.osc.is_on {
+                    match osc.osc.parent_osc_slot {
+                        ParentIndex::Modulator(modid) => {
+                            let mod_osc =
+                                &mut self.modulator_osc[Self::modulator_osc_index(voice, modid)];
+                            mod_osc.mod_multiplier += modulation_samples[i];
+                            mod_osc.mod_counter += 1;
+                        }
+                        ParentIndex::Primary(modid) => {
+                            let prim_osc =
+                                &mut self.primary_osc[Self::primary_osc_index(voice, modid)];
+                            prim_osc.mod_multiplier += modulation_samples[i];
+                            prim_osc.mod_counter += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        //Phase step primary oscillators and accumulate final, modulated
+        // sample based on the evaluated `mod_multiplier` and `mod_counter`
         for lane_index in 0..(Self::PRIMARY_OSC_COUNT / 4) {
             #[cfg(feature = "profile")]
             puffin::profile_scope!("Primary phase step");
@@ -405,7 +543,7 @@ impl OscillatorBank {
             }
 
             //calculate lane results
-            let result = Self::primary_step(
+            let result = Self::phase_step(
                 local_bases,
                 local_multiplier,
                 local_current_phase,
@@ -422,14 +560,13 @@ impl OscillatorBank {
             for i in 0..4 {
                 let idx = Self::primary_osc_index(voice, offset + i);
                 let mut osc = &mut self.primary_osc[idx];
-                osc.phase = result[i];
-                osc.mod_counter = 0;
-                osc.mod_multiplier = 0.0;
+                if osc.osc.is_on {
+                    osc.phase = result[i];
+                    osc.mod_counter = 0;
+                    osc.mod_multiplier = 1.0;
+                }
             }
         }
-
-        //Now evaluate all modulators
-        //
 
         /*
         //Accumulates all primary values

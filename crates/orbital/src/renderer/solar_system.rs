@@ -151,6 +151,7 @@ impl SolarSystem {
                 for orbital in &mut self.orbitals {
                     let _pausing = orbital.on_drag(interaction_pos);
                 }
+                draw_state_changed = true;
             }
 
             if response.drag_released() {
@@ -189,10 +190,10 @@ impl SolarSystem {
             for orb in &mut self.orbitals {
                 orb.update();
             }
-        }
 
-        //TODO handle breakdown
-        let _ = coms.send(ComMsg::StateChange(self.get_solar_state()));
+            //TODO handle breakdown
+            let _ = coms.send(ComMsg::StateChange(self.get_solar_state()));
+        }
     }
 
     pub fn insert_primary(&mut self, at: Pos2, center: Pos2) {
