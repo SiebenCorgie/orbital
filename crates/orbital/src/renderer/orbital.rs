@@ -277,6 +277,11 @@ impl Orbital {
         self.offset = angle;
     }
 
+    fn anim_speed(&self) -> f32 {
+        //using offsetted speed sigmoid
+        1.0 + (self.speed_index as f32 / (1.0 + (self.speed_index as f32).abs()))
+    }
+
     pub fn update(&mut self) {
         self.phase = self.phase % TWOPI;
         let new_loc = self.obj_pos();
@@ -285,6 +290,17 @@ impl Orbital {
             c.center = new_loc;
             //..then call inner update
             c.update();
+        }
+    }
+
+    pub fn update_anim(&mut self, delta: f32) {
+        self.phase = (self.phase + (self.anim_speed() * delta)) % TWOPI;
+        let new_loc = self.obj_pos();
+        for c in &mut self.children {
+            //forward update center...
+            c.center = new_loc;
+            //..then call inner update
+            c.update_anim(delta);
         }
     }
 

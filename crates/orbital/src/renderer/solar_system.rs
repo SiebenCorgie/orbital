@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crossbeam::channel::Sender;
 use egui::{epaint::CircleShape, InputState, Painter, PointerButton, Response, Shape, Stroke};
 use nih_plug::nih_log;
@@ -72,6 +74,9 @@ pub struct SolarSystem {
     //Primary orbitals. Each child is by necessity a modulator
     orbitals: Vec<Orbital>,
     allocator: SlotAllocator,
+    #[serde(default = "Instant::now", skip)]
+    pub last_update: Instant,
+    pub is_paused: bool,
 }
 
 impl SolarSystem {
@@ -80,6 +85,8 @@ impl SolarSystem {
             last_center: Pos2::ZERO,
             orbitals: Vec::new(),
             allocator: SlotAllocator::default(),
+            last_update: Instant::now(),
+            is_paused: true,
         };
 
         //setup a base system. New is only called if there is no state at all,
@@ -186,14 +193,29 @@ impl SolarSystem {
             }
         }
 
-        if draw_state_changed {
+        //update inner animation, but only if not pausing
+        if !self.is_paused {
+            let delta = self.last_update.elapsed().as_secs_f32();
+            self.last_update = Instant::now();
             for orb in &mut self.orbitals {
-                orb.update();
+                orb.update_anim(delta);
             }
+        } else {
+            if draw_state_changed {
+                for orb in &mut self.orbitals {
+                    orb.update();
+                }
+            }
+        }
 
+        if draw_state_changed {
             //TODO handle breakdown
             let _ = coms.send(ComMsg::StateChange(self.get_solar_state()));
         }
+    }
+
+    pub fn reset_anim_state(&mut self) {
+        self.last_update = Instant::now();
     }
 
     pub fn insert_primary(&mut self, at: Pos2, center: Pos2) {

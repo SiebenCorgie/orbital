@@ -12,6 +12,7 @@ use nih_plug_egui::egui::{Sense, Widget};
 use self::{
     adsrgui::{GainSwitch, Knob},
     modswitch::ModSwitch,
+    ppbutton::PPButton,
     solar_system::SolarSystem,
     switch::Switch,
 };
@@ -19,7 +20,7 @@ use self::{
 pub mod adsrgui;
 pub mod modswitch;
 pub mod orbital;
-//pub mod ppbutton;
+pub mod ppbutton;
 pub mod solar_system;
 pub mod switch;
 
@@ -168,6 +169,13 @@ impl Widget for &mut Renderer {
                                     self.msg_sender.send(ComMsg::ResetPhaseChanged(reset_phase));
                             }
                         });
+                        ui.add_space(20.0);
+                        ui.vertical(|ui| {
+                            ui.add_space(10.0);
+                            if ui.add(PPButton::new(&mut self.system.is_paused)).clicked() {
+                                self.system.reset_anim_state();
+                            }
+                        })
                     })
                 })
             });
