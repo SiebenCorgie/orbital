@@ -472,7 +472,6 @@ impl OscillatorBank {
         // TODO: If the modulation strategy is "Absolute" we could
         //       Do the phase stepping for the whole bank in one pass instead of "per-voice"
         for lane_idx in 0..(Self::MOD_OSC_COUNT / 4) {
-            let mut count = 0;
             let offset = lane_idx * 4;
             match self.mod_ty {
                 ModulationType::Absolute => {
@@ -486,9 +485,6 @@ impl OscillatorBank {
                         local_multiplier[i] = osc.freq_multiplier();
                         local_current_phase[i] = osc.phase;
                         local_phase_offsets[i] = osc.offset;
-                        if osc.osc.is_on {
-                            count += 1;
-                        }
                     }
                 }
                 ModulationType::Relative => {
@@ -504,40 +500,27 @@ impl OscillatorBank {
                         local_multiplier[i] = osc.freq_multiplier();
                         local_current_phase[i] = osc.phase;
                         local_phase_offsets[i] = osc.offset;
-                        if osc.osc.is_on {
-                            count += 1;
-                        }
                     }
                 }
             }
 
-            if count > 0 {
-                //after loading, do the phase step
-                let result = Self::phase_step(
-                    local_bases,
-                    local_multiplier,
-                    local_current_phase,
-                    sample_delta,
-                );
+            //after loading, do the phase step
+            let result = Self::phase_step(
+                local_bases,
+                local_multiplier,
+                local_current_phase,
+                sample_delta,
+            );
 
-                //Write back the new phase and reset the modulation values for all. Those will be re-written in the step
-                // below
-                for i in 0..4 {
-                    let idx = Self::modulator_osc_index(voice, offset + i);
-                    let osc = &mut self.modulator_osc[idx];
+            //Write back the new phase and reset the modulation values for all. Those will be re-written in the step
+            // below
+            for i in 0..4 {
+                let idx = Self::modulator_osc_index(voice, offset + i);
+                let osc = &mut self.modulator_osc[idx];
 
-                    osc.phase = result[i];
-                    osc.mod_counter = 0;
-                    osc.mod_multiplier = 0.0;
-                }
-            } else {
-                //in that case, just reset
-                for i in 0..4 {
-                    let idx = Self::modulator_osc_index(voice, offset + i);
-                    let osc = &mut self.modulator_osc[idx];
-                    osc.mod_counter = 0;
-                    osc.mod_multiplier = 0.0;
-                }
+                osc.phase = result[i];
+                osc.mod_counter = 0;
+                osc.mod_multiplier = 0.0;
             }
         }
 
@@ -610,7 +593,7 @@ impl OscillatorBank {
                 local_volumes[i] = osc.osc.volume;
 
                 if osc.osc.is_on {
-                    //increas count for correct divisor
+                    //increase count for correct divisor
                     count += 1;
                 } else {
                     local_volumes[i] = 0.0;
@@ -630,16 +613,13 @@ impl OscillatorBank {
                 accum +=
                     Self::primary_sample(result, local_phase_offsets, local_volumes) / count as f32;
             }
-
             //write phase results to osc's and reset modulator
             for i in 0..4 {
                 let idx = Self::primary_osc_index(voice, offset + i);
                 let mut osc = &mut self.primary_osc[idx];
-                if osc.osc.is_on {
-                    osc.phase = result[i];
-                    osc.mod_counter = 0;
-                    osc.mod_multiplier = 1.0;
-                }
+                osc.phase = result[i];
+                osc.mod_counter = 0;
+                osc.mod_multiplier = 1.0;
             }
         }
 
