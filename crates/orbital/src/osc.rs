@@ -665,7 +665,7 @@ impl OscillatorBank {
         #[cfg(feature = "profile")]
         puffin::profile_function!(format!(
             "OSC-Bank process Max: {} ms",
-            (buffer.len() as f64 * delta_sec) * 1000.0
+            (buffer.samples() as f64 * delta_sec) * 1000.0
         ));
 
         let mut sample_time = buffer_time_start;

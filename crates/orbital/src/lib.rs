@@ -8,7 +8,7 @@ use nih_plug::{
     prelude::{
         AsyncExecutor, AuxiliaryBuffers, Buffer, BufferConfig, BusConfig, ClapFeature, ClapPlugin,
         Editor, InitContext, MidiConfig, NoteEvent, Params, Plugin, ProcessContext, ProcessStatus,
-        Vst3Plugin,
+        Vst3Plugin, Vst3SubCategory,
     },
 };
 use nih_plug_egui::{create_egui_editor, EguiState};
@@ -104,6 +104,7 @@ impl Plugin for Orbital {
 
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
+    type SysExMessage = ();
     type BackgroundTask = ();
 
     fn params(&self) -> Arc<dyn Params> {
@@ -197,7 +198,7 @@ impl Plugin for Orbital {
         #[cfg(feature = "profile")]
         puffin::profile_function!();
 
-        let buffer_length = buffer.len() as Time / context.transport().sample_rate as f64;
+        let buffer_length = buffer.samples() as Time / context.transport().sample_rate as f64;
         let sample_time = 1.0 / context.transport().sample_rate as Time;
 
         //try at most 10
@@ -281,7 +282,11 @@ impl ClapPlugin for Orbital {
 
 impl Vst3Plugin for Orbital {
     const VST3_CLASS_ID: [u8; 16] = *b"OrbitalSynthnnns";
-    const VST3_CATEGORIES: &'static str = "Instrument|Synth";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
+        Vst3SubCategory::Fx,
+        Vst3SubCategory::Filter,
+        Vst3SubCategory::Distortion,
+    ];
 }
 
 nih_export_clap!(Orbital);
