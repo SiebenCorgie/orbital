@@ -1,0 +1,6 @@
+# 0.1
+
+- Base interface
+- SIMD-based oscillator banks 
+- polyphony
+- ADSR MIDI filter
