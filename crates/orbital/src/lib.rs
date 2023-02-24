@@ -6,16 +6,19 @@ use envelope::EnvelopeParams;
 use nih_plug::{
     nih_error, nih_export_clap, nih_export_vst3, nih_log,
     prelude::{
-        AsyncExecutor, AuxiliaryBuffers, Buffer, BufferConfig, BusConfig, ClapFeature, ClapPlugin,
-        Editor, InitContext, MidiConfig, NoteEvent, Params, Plugin, ProcessContext, ProcessStatus,
-        Vst3Plugin, Vst3SubCategory,
+        AsyncExecutor, AudioIOLayout, AuxiliaryBuffers, Buffer, BufferConfig, ClapFeature,
+        ClapPlugin, Editor, InitContext, MidiConfig, NoteEvent, Params, Plugin, ProcessContext,
+        ProcessStatus, Vst3Plugin, Vst3SubCategory,
     },
 };
 use nih_plug_egui::{create_egui_editor, EguiState};
 use osc::ModulationType;
 use osc_array::OscArray;
 use renderer::{solar_system::SolarSystem, Renderer};
-use std::sync::{Arc, Mutex};
+use std::{
+    num::NonZeroU32,
+    sync::{Arc, Mutex},
+};
 
 mod com;
 mod envelope;
@@ -38,6 +41,10 @@ pub struct Orbital {
 
     #[cfg(feature = "profile")]
     server: Option<puffin_http::Server>,
+}
+
+impl Orbital {
+    const NUM_CHANNELS: u32 = 2;
 }
 
 #[derive(Params)]
@@ -98,8 +105,12 @@ impl Plugin for Orbital {
 
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-    const DEFAULT_INPUT_CHANNELS: u32 = 0;
-    const DEFAULT_OUTPUT_CHANNELS: u32 = 2;
+    // We'll only do stereo for now
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_output_channels: NonZeroU32::new(Orbital::NUM_CHANNELS),
+        ..AudioIOLayout::const_default()
+    }];
+
     const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
 
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
@@ -126,14 +137,9 @@ impl Plugin for Orbital {
         )
     }
 
-    fn accepts_bus_config(&self, config: &BusConfig) -> bool {
-        // This works with any symmetrical IO layout
-        config.num_input_channels == 0 && config.num_output_channels == 2
-    }
-
     fn initialize(
         &mut self,
-        _bus_config: &BusConfig,
+        _audio_io_layout: &AudioIOLayout,
         _buffer_config: &BufferConfig,
         context: &mut impl InitContext<Self>,
     ) -> bool {
@@ -282,11 +288,8 @@ impl ClapPlugin for Orbital {
 
 impl Vst3Plugin for Orbital {
     const VST3_CLASS_ID: [u8; 16] = *b"OrbitalSynthnnns";
-    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
-        Vst3SubCategory::Fx,
-        Vst3SubCategory::Filter,
-        Vst3SubCategory::Distortion,
-    ];
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
+        &[Vst3SubCategory::Instrument, Vst3SubCategory::Synth];
 }
 
 nih_export_clap!(Orbital);

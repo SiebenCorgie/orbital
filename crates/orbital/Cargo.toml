@@ -11,12 +11,12 @@ crate-type = ["cdylib", "lib"]
 
 [features]
 
-default = ["profile"]
+default = []
 profile = ["puffin", "puffin_http"]
 
 [dependencies]
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["standalone"] }
-nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git"}
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["standalone"], rev = "d777b02d33d5d807900de6c9c57691780e26f879" }
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "d777b02d33d5d807900de6c9c57691780e26f879"}
 egui = {version = "0.19", features = ["serde"]}
 serde = "1.0"
 serde_derive = "1.0"
