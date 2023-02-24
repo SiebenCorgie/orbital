@@ -38,7 +38,7 @@ Now copy the desired plugin somewhere your DAW can find it.
 ## Quick start guide:
 
 
-![Quick Start Video](https://youtu.be/KKwYsVGxOgs)
+[![Quick Start Video](https://img.youtube.com/vi/KKwYsVGxOgs/0.jpg)](http://www.youtube.com/watch?v=KKwYsVGxOgs)
 
 
 The synthesizer is fundamentally a frequency modulation based synthesizer. Each orbit represents a oscillator with a given speed and possibly a parent that is modulated with that frequency. If the orbit is around the sun, the orbit is considered "primary". This means that the frequency of the oscillator is a fundamental frequency of the resulting sound.
