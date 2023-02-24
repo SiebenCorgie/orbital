@@ -37,6 +37,10 @@ Now copy the desired plugin somewhere your DAW can find it.
 
 ## Quick start guide:
 
+
+![Quick Start Video](https://youtu.be/KKwYsVGxOgs)
+
+
 The synthesizer is fundamentally a frequency modulation based synthesizer. Each orbit represents a oscillator with a given speed and possibly a parent that is modulated with that frequency. If the orbit is around the sun, the orbit is considered "primary". This means that the frequency of the oscillator is a fundamental frequency of the resulting sound.
 
 You add a primary frequency by clicking somewhere into the void around the sun. Note that you can change the orbit height and the location of the planet by dragging one of those with your pointer.
