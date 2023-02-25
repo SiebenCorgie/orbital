@@ -128,7 +128,7 @@ impl<'a, P: Param> Widget for Knob<'a, P> {
             rect.center(),
             Align2::CENTER_CENTER,
             format!(
-                "{:.2}",
+                "{}",
                 self.param
                     .normalized_value_to_string(self.param.modulated_normalized_value(), true)
             ),

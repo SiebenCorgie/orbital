@@ -114,7 +114,8 @@ impl Default for OrbitalParams {
             synth: Arc::new(Mutex::new(OscArray::default())),
             solar_system: Arc::new(Mutex::new(SolarSystem::new())),
 
-            delay: FloatParam::new("Gain", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            delay: FloatParam::new("Gain", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(|v| format!("{:.2}", v))),
             //Otherwise we get such a pesky *clicking* on attack
             attack: FloatParam::new(
                 "Attack",
@@ -123,11 +124,16 @@ impl Default for OrbitalParams {
                     min: 0.0001,
                     max: 1.0,
                 },
-            ),
-            hold: FloatParam::new("Hold", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            decay: FloatParam::new("Decay", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            sustain: FloatParam::new("Sustain", 0.8, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            release: FloatParam::new("Release", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            )
+            .with_value_to_string(Arc::new(|v| format!("{:.2}", v))),
+            hold: FloatParam::new("Hold", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(|v| format!("{:.2}", v))),
+            decay: FloatParam::new("Decay", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(|v| format!("{:.2}", v))),
+            sustain: FloatParam::new("Sustain", 0.8, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(|v| format!("{:.2}", v))),
+            release: FloatParam::new("Release", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_value_to_string(Arc::new(|v| format!("{:.2}", v))),
         }
     }
 }
