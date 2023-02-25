@@ -1,10 +1,7 @@
 use nih_plug::prelude::Enum;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    envelope::EnvelopeParams,
-    osc::{modulator::ModulatorOsc, primary::PrimaryOsc, sigmoid, ModulationType},
-};
+use crate::osc::{modulator::ModulatorOsc, primary::PrimaryOsc, sigmoid, ModulationType};
 
 #[derive(Clone)]
 pub struct SolarState {
@@ -61,5 +58,4 @@ pub enum ComMsg {
     StateChange(SolarState),
     ModRelationChanged(ModulationType),
     GainChange(GainType),
-    ResetPhaseChanged(bool),
 }

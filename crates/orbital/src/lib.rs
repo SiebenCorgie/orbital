@@ -6,9 +6,9 @@ use envelope::EnvelopeParams;
 use nih_plug::{
     nih_error, nih_export_clap, nih_export_vst3, nih_log,
     prelude::{
-        AsyncExecutor, AudioIOLayout, AuxiliaryBuffers, Buffer, BufferConfig, ClapFeature,
-        ClapPlugin, Editor, FloatParam, FloatRange, InitContext, MidiConfig, NoteEvent, Params,
-        Plugin, ProcessContext, ProcessStatus, Vst3Plugin, Vst3SubCategory,
+        AsyncExecutor, AudioIOLayout, AuxiliaryBuffers, BoolParam, Buffer, BufferConfig,
+        ClapFeature, ClapPlugin, Editor, FloatParam, FloatRange, InitContext, MidiConfig,
+        NoteEvent, Params, Plugin, ProcessContext, ProcessStatus, Vst3Plugin, Vst3SubCategory,
     },
 };
 use nih_plug_egui::{create_egui_editor, EguiState};
@@ -64,8 +64,8 @@ pub struct OrbitalParams {
     /// restored.
     #[persist = "editor-state"]
     editor_state: Arc<EguiState>,
-    #[persist = "resetphase"]
-    pub reset_phase: Arc<Mutex<bool>>,
+    #[id = "reset_phase"]
+    pub reset_phase: BoolParam,
 
     #[persist = "modty"]
     pub mod_ty: Arc<Mutex<ModulationType>>,
@@ -109,7 +109,7 @@ impl Default for OrbitalParams {
             editor_state: EguiState::from_size(800, 800),
             // See the main gain example for more details
             mod_ty: Arc::new(Mutex::new(ModulationType::default())),
-            reset_phase: Arc::new(Mutex::new(false)),
+            reset_phase: BoolParam::new("Reset Phase", true),
             gain_ty: Arc::new(Mutex::new(GainType::default())),
             synth: Arc::new(Mutex::new(OscArray::default())),
             solar_system: Arc::new(Mutex::new(SolarSystem::new())),
@@ -256,12 +256,6 @@ impl Plugin for Orbital {
                         }
                         self.synth.bank.gain_ty = new_gain;
                     }
-                    ComMsg::ResetPhaseChanged(new) => {
-                        if let Ok(mut p) = self.params.reset_phase.try_lock() {
-                            *p = new;
-                        }
-                        self.synth.bank.reset_phase = new;
-                    }
                 },
                 Err(e) => {
                     match e {
@@ -279,6 +273,7 @@ impl Plugin for Orbital {
         //      1. From ui (we can track that)
         //      2. From DAW (no idea how to track that)
         self.synth.set_envelopes(self.get_adsr_settings());
+        self.synth.bank.reset_phase = self.params.reset_phase.value();
 
         while let Some(ev) = context.next_event() {
             match ev {

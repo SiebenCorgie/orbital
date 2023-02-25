@@ -2,14 +2,13 @@ use std::{sync::Arc, time::Instant};
 
 use crate::{
     com::{ComMsg, GainType},
-    envelope::EnvelopeParams,
     osc::ModulationType,
     OrbitalParams,
 };
 use crossbeam::channel::Sender;
 use egui::Context;
 use nih_plug::prelude::ParamSetter;
-use nih_plug_egui::egui::{Sense, Widget};
+use nih_plug_egui::egui::Sense;
 
 use self::{
     adsrgui::{GainSwitch, Knob},
@@ -54,14 +53,8 @@ impl Renderer {
             .map(|g| g.clone())
             .unwrap_or(GainType::default());
 
-        let mut reset_phase = self
-            .params
-            .reset_phase
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or(false);
 
-        let tp = egui::TopBottomPanel::top("Toppanel")
+        let _tp = egui::TopBottomPanel::top("Toppanel")
             .max_height(50.0)
             .resizable(false)
             .min_height(10.0)
@@ -121,13 +114,7 @@ impl Renderer {
                         ui.add_space(10.0);
 
                         ui.vertical(|ui| {
-                            if ui
-                                .add(Switch::new(&mut reset_phase).with_label("Reset Phase"))
-                                .changed()
-                            {
-                                let _ =
-                                    self.msg_sender.send(ComMsg::ResetPhaseChanged(reset_phase));
-                            }
+                            ui.add(Switch::new(&self.params.reset_phase, setter).with_label("Reset Phase"))
                         });
                         ui.add_space(20.0);
                         ui.vertical(|ui| {
@@ -140,7 +127,7 @@ impl Renderer {
                 })
             });
 
-        let ctpanel = egui::CentralPanel::default().show(ui.ctx(), |ui| {
+        let _ctpanel = egui::CentralPanel::default().show(ui.ctx(), |ui| {
             let rect = ui.clip_rect();
             let (response, painter) = ui.allocate_painter(rect.size(), Sense::click_and_drag());
             self.system
