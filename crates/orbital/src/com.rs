@@ -59,7 +59,6 @@ impl GainType {
 #[derive(Clone)]
 pub enum ComMsg {
     StateChange(SolarState),
-    EnvChanged(EnvelopeParams),
     ModRelationChanged(ModulationType),
     GainChange(GainType),
     ResetPhaseChanged(bool),

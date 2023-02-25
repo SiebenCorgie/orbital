@@ -7,6 +7,8 @@ use crate::{
     OrbitalParams,
 };
 use crossbeam::channel::Sender;
+use egui::Context;
+use nih_plug::prelude::ParamSetter;
 use nih_plug_egui::egui::{Sense, Widget};
 
 use self::{
@@ -32,22 +34,18 @@ pub struct Renderer {
     show_help: bool,
 }
 
-impl Widget for &mut Renderer {
-    fn ui(self, ui: &mut nih_plug_egui::egui::Ui) -> nih_plug_egui::egui::Response {
+impl Renderer {
+    pub fn draw(&mut self, eguictx: &Context, setter: &ParamSetter) {
+        //setup egui ui context as you usually would. But we gain the `setter` param which we cant
+        // access if we implement `ui()` in egui's Widget trait.
+        egui::CentralPanel::default().show(eguictx, |ui|{
+
         let mut mod_ty = self
             .params
             .mod_ty
             .lock()
             .map(|t| t.clone())
             .unwrap_or(ModulationType::default());
-
-        let mut local_env: EnvelopeParams = self
-            .params
-            .adsr
-            .lock()
-            .map(|m| m.clone())
-            .unwrap_or(EnvelopeParams::default());
-        let mut env_changed = false;
 
         let mut gain_ty = self
             .params
@@ -102,60 +100,22 @@ impl Widget for &mut Renderer {
                         ui.add_space(10.0);
 
                         ui.vertical(|ui| {
-                            if ui
-                                .add(Knob::new(&mut local_env.delay, 0.0, 1.0).with_label("Delay"))
-                                .changed()
-                            {
-                                env_changed = true;
-                            }
+                            ui.add(Knob::new(&self.params.delay, setter).with_label("Delay"))
                         });
                         ui.vertical(|ui| {
-                            if ui
-                                .add(
-                                    Knob::new(&mut local_env.attack, 0.0, 1.0).with_label("Attack"),
-                                )
-                                .changed()
-                            {
-                                env_changed = true;
-                            }
+                            ui.add(Knob::new(&self.params.attack, setter).with_label("Attack"))
                         });
                         ui.vertical(|ui| {
-                            if ui
-                                .add(Knob::new(&mut local_env.hold, 0.0, 1.0).with_label("Hold"))
-                                .changed()
-                            {
-                                env_changed = true;
-                            }
+                                ui.add(Knob::new(&self.params.hold, setter).with_label("Hold"))
                         });
                         ui.vertical(|ui| {
-                            if ui
-                                .add(Knob::new(&mut local_env.decay, 0.0, 1.0).with_label("Decay"))
-                                .changed()
-                            {
-                                env_changed = true;
-                            }
+                                ui.add(Knob::new(&self.params.decay, setter).with_label("Decay"))
                         });
                         ui.vertical(|ui| {
-                            if ui
-                                .add(
-                                    Knob::new(&mut local_env.sustain_level, 0.0, 1.0)
-                                        .with_label("Sustain"),
-                                )
-                                .changed()
-                            {
-                                env_changed = true;
-                            }
+                                ui.add(Knob::new(&self.params.sustain, setter).with_label("Sustain"))
                         });
                         ui.vertical(|ui| {
-                            if ui
-                                .add(
-                                    Knob::new(&mut local_env.release, 0.0, 1.0)
-                                        .with_label("Release"),
-                                )
-                                .changed()
-                            {
-                                env_changed = true;
-                            }
+                                ui.add(Knob::new(&self.params.release, setter).with_label("Release"))
                         });
 
                         ui.add_space(10.0);
@@ -180,9 +140,6 @@ impl Widget for &mut Renderer {
                 })
             });
 
-        if env_changed {
-            let _ = self.msg_sender.send(ComMsg::EnvChanged(local_env));
-        }
         let ctpanel = egui::CentralPanel::default().show(ui.ctx(), |ui| {
             let rect = ui.clip_rect();
             let (response, painter) = ui.allocate_painter(rect.size(), Sense::click_and_drag());
@@ -208,7 +165,9 @@ There are four main interactions. :
                 });
         }
 
-        tp.response.union(ctpanel.response)
+        //tp.response.union(ctpanel.response)
+        //
+        });
     }
 }
 

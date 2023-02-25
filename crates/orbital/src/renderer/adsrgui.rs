@@ -4,24 +4,24 @@ use egui::{
     epaint::CubicBezierShape, Align2, Color32, FontId, Label, Response, Sense, Shape, Stroke, Vec2,
     Widget,
 };
+use nih_plug::prelude::{Param, ParamSetter};
 
-pub struct Knob<'a, T> {
-    pub value: &'a mut T,
-    //rectangel
+#[must_use = "You should put this widget in an ui with `ui.add(widget);`"]
+pub struct Knob<'a, P: Param> {
+    param: &'a P,
+    setter: &'a ParamSetter<'a>,
+    //rect
     pub size: f32,
     pub label: Option<&'a str>,
-    pub min: T,
-    pub max: T,
 }
 
-impl<'a, T> Knob<'a, T> {
-    pub fn new(value: &'a mut T, min: T, max: T) -> Self {
+impl<'a, P: Param> Knob<'a, P> {
+    pub fn new(param: &'a P, setter: &'a ParamSetter<'a>) -> Self {
         Knob {
-            value,
+            param,
+            setter,
             size: 50.0,
             label: None,
-            min,
-            max,
         }
     }
 
@@ -41,30 +41,39 @@ impl<'a, T> Knob<'a, T> {
     }
 }
 
-impl<'a> Knob<'a, f32> {
-    fn angle_to_value(&self, angle: f32) -> f32 {
-        let perc = angle / TWOPI;
-        self.min + ((self.max - self.min) * perc)
+impl<'a, P: Param> Knob<'a, P> {
+    fn angle_to_normalized_value(&self, angle: f32) -> f32 {
+        angle / TWOPI
     }
 
-    fn value_to_angle(&self, val: f32) -> f32 {
-        let perc = (val - self.min) / (self.max - self.min);
-        (TWOPI * perc).clamp(0.0, TWOPI)
+    fn value_to_angle(&self, normalized: f32) -> f32 {
+        (TWOPI * normalized).clamp(0.0, TWOPI)
+    }
+
+    fn plain_value(&self) -> P::Plain {
+        self.param.modulated_plain_value()
+    }
+
+    fn set_normalized_value(&self, normalized: f32) {
+        // This snaps to the nearest plain value if the parameter is stepped in some way.
+        // TODO: As an optimization, we could add a `const CONTINUOUS: bool` to the parameter to
+        //       avoid this normalized->plain->normalized conversion for parameters that don't need
+        //       it
+        let value = self.param.preview_plain(normalized);
+        if value != self.plain_value() {
+            self.setter.set_parameter(self.param, value);
+        }
     }
 }
 
-impl<'a> Widget for Knob<'a, f32> {
+impl<'a, P: Param> Widget for Knob<'a, P> {
     fn ui(self, ui: &mut egui::Ui) -> Response {
         let (mut resp, painter) =
             ui.allocate_painter(Vec2::splat(self.size), Sense::click_and_drag());
         let rect = painter.clip_rect();
         let knob_offset = self.offset();
 
-        let stroke_width = if resp.hovered(){
-            2.0
-        }else{
-            1.0
-        };
+        let stroke_width = if resp.hovered() { 2.0 } else { 1.0 };
 
         //find the location and update the value
         if resp.dragged() {
@@ -79,7 +88,7 @@ impl<'a> Widget for Knob<'a, f32> {
                     TWOPI - angle
                 };
 
-                *self.value = self.angle_to_value(angle);
+                self.set_normalized_value(self.angle_to_normalized_value(angle));
                 resp.mark_changed();
             }
         }
@@ -90,16 +99,8 @@ impl<'a> Widget for Knob<'a, f32> {
                 .pointer
                 .button_double_clicked(egui::PointerButton::Primary)
             {
-                *self.value = self.min;
-                resp.mark_changed();
-            }
-
-            if ui
-                .input()
-                .pointer
-                .button_double_clicked(egui::PointerButton::Secondary)
-            {
-                *self.value = self.max;
+                //on double click, reset value
+                self.set_normalized_value(self.param.default_normalized_value());
                 resp.mark_changed();
             }
         }
@@ -110,7 +111,11 @@ impl<'a> Widget for Knob<'a, f32> {
             Color32::TRANSPARENT,
             Stroke::new(stroke_width, Color32::LIGHT_GRAY),
         );
-        let at = rotate_vec2(Vec2::Y * knob_offset, self.value_to_angle(*self.value));
+
+        let at = rotate_vec2(
+            Vec2::Y * knob_offset,
+            self.value_to_angle(self.param.modulated_normalized_value()),
+        );
         painter.circle(rect.center() + at, 2.0, Color32::WHITE, Stroke::none());
         painter.line_segment(
             [
@@ -122,105 +127,11 @@ impl<'a> Widget for Knob<'a, f32> {
         painter.text(
             rect.center(),
             Align2::CENTER_CENTER,
-            format!("{:.2}", self.value),
-            FontId::default(),
-            Color32::WHITE,
-        );
-
-        if let Some(label) = self.label {
-            ui.add_sized(
-                Vec2 {
-                    x: self.size,
-                    y: ui.available_height(),
-                },
-                Label::new(label),
-            );
-        }
-        resp
-    }
-}
-
-impl<'a> Knob<'a, f64> {
-    fn angle_to_value(&self, angle: f32) -> f64 {
-        let perc = angle / TWOPI;
-        self.min + ((self.max - self.min) * perc as f64)
-    }
-
-    fn value_to_angle(&self, val: f64) -> f32 {
-        let perc = ((val - self.min) / (self.max - self.min)) as f32;
-        (TWOPI * perc).clamp(0.0, TWOPI)
-    }
-}
-
-impl<'a> Widget for Knob<'a, f64> {
-    fn ui(self, ui: &mut egui::Ui) -> Response {
-        let (mut resp, painter) =
-            ui.allocate_painter(Vec2::splat(self.size), Sense::click_and_drag());
-        let rect = painter.clip_rect();
-        let knob_offset = self.offset();
-        let stroke_width = if resp.hovered(){
-            2.0
-        }else{
-            1.0
-        };
-
-        //find the location and update the value
-        if resp.dragged_by(egui::PointerButton::Primary) {
-            if let Some(at) = ui.input().pointer.interact_pos() {
-                let at_prime = at - rect.center();
-                let angle = (Vec2::Y.dot(at_prime) / (at_prime.length() * 1.0)).acos();
-
-                let angle = if at.x < rect.center().x {
-                    //TWOPI - angle
-                    angle
-                } else {
-                    TWOPI - angle
-                };
-
-                *self.value = self.angle_to_value(angle);
-                resp.mark_changed();
-            }
-        }
-
-        if resp.clicked() {
-            if ui
-                .input()
-                .pointer
-                .button_double_clicked(egui::PointerButton::Primary)
-            {
-                *self.value = self.min;
-                resp.mark_changed();
-            }
-
-            if ui
-                .input()
-                .pointer
-                .button_double_clicked(egui::PointerButton::Secondary)
-            {
-                *self.value = self.max;
-                resp.mark_changed();
-            }
-        }
-
-        painter.circle(
-            rect.center(),
-            knob_offset,
-            Color32::TRANSPARENT,
-            Stroke::new(stroke_width, Color32::LIGHT_GRAY),
-        );
-        let at = rotate_vec2(Vec2::Y * knob_offset, self.value_to_angle(*self.value));
-        painter.circle(rect.center() + at, 2.0, Color32::WHITE, Stroke::none());
-        painter.line_segment(
-            [
-                rect.center_bottom(),
-                rect.center_bottom() - Vec2 { x: 0.0, y: 10.0 },
-            ],
-            Stroke::new(stroke_width, Color32::WHITE),
-        );
-        painter.text(
-            rect.center(),
-            Align2::CENTER_CENTER,
-            format!("{:.2}", self.value),
+            format!(
+                "{:.2}",
+                self.param
+                    .normalized_value_to_string(self.param.modulated_normalized_value(), true)
+            ),
             FontId::default(),
             Color32::WHITE,
         );
@@ -267,11 +178,11 @@ impl<'a> Widget for GainSwitch<'a> {
 
         let rect = painter.clip_rect();
 
-        let stroke = if resp.hovered(){
+        let stroke = if resp.hovered() {
             let mut s = Self::STROKE;
             s.width = 2.0;
             s
-        }else{
+        } else {
             Self::STROKE
         };
 
@@ -290,7 +201,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: Self::YOFF,
                             },
                     ],
-                    stroke
+                    stroke,
                 );
 
                 painter.line_segment(
@@ -306,7 +217,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: -Self::YOFF,
                             },
                     ],
-                    stroke
+                    stroke,
                 );
 
                 painter.line_segment(
@@ -322,7 +233,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: -Self::YOFF,
                             },
                     ],
-                    stroke
+                    stroke,
                 );
 
                 painter.text(
@@ -347,7 +258,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: Self::YOFF,
                             },
                     ],
-                    stroke
+                    stroke,
                 );
 
                 painter.add(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
@@ -375,7 +286,7 @@ impl<'a> Widget for GainSwitch<'a> {
                     ],
                     false,
                     Color32::TRANSPARENT,
-                    stroke
+                    stroke,
                 )));
 
                 painter.line_segment(
@@ -391,7 +302,7 @@ impl<'a> Widget for GainSwitch<'a> {
                                 y: -Self::YOFF,
                             },
                     ],
-                    stroke
+                    stroke,
                 );
 
                 painter.text(

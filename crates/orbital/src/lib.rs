@@ -7,8 +7,8 @@ use nih_plug::{
     nih_error, nih_export_clap, nih_export_vst3, nih_log,
     prelude::{
         AsyncExecutor, AudioIOLayout, AuxiliaryBuffers, Buffer, BufferConfig, ClapFeature,
-        ClapPlugin, Editor, InitContext, MidiConfig, NoteEvent, Params, Plugin, ProcessContext,
-        ProcessStatus, Vst3Plugin, Vst3SubCategory,
+        ClapPlugin, Editor, FloatParam, FloatRange, InitContext, MidiConfig, NoteEvent, Params,
+        Plugin, ProcessContext, ProcessStatus, Vst3Plugin, Vst3SubCategory,
     },
 };
 use nih_plug_egui::{create_egui_editor, EguiState};
@@ -45,13 +45,21 @@ pub struct Orbital {
 
 impl Orbital {
     const NUM_CHANNELS: u32 = 2;
+
+    fn get_adsr_settings(&self) -> EnvelopeParams {
+        EnvelopeParams {
+            delay: self.params.delay.value() as f64,
+            attack: self.params.attack.value() as f64,
+            hold: self.params.hold.value() as f64,
+            decay: self.params.decay.value() as f64,
+            sustain_level: self.params.sustain.value(),
+            release: self.params.release.value() as f64,
+        }
+    }
 }
 
 #[derive(Params)]
 pub struct OrbitalParams {
-    #[persist = "adsr_save"]
-    pub adsr: Arc<Mutex<EnvelopeParams>>,
-
     /// The editor state, saved together with the parameter state so the custom scaling can be
     /// restored.
     #[persist = "editor-state"]
@@ -67,6 +75,19 @@ pub struct OrbitalParams {
     pub synth: Arc<Mutex<OscArray>>,
     #[persist = "SolarSystem"]
     pub solar_system: Arc<Mutex<SolarSystem>>,
+
+    #[id = "Delay"]
+    pub delay: FloatParam,
+    #[id = "Attack"]
+    pub attack: FloatParam,
+    #[id = "Hold"]
+    pub hold: FloatParam,
+    #[id = "Decay"]
+    pub decay: FloatParam,
+    #[id = "Sustain"]
+    pub sustain: FloatParam,
+    #[id = "Release"]
+    pub release: FloatParam,
 }
 
 impl Default for Orbital {
@@ -86,13 +107,27 @@ impl Default for OrbitalParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(800, 800),
-            adsr: Arc::new(Mutex::new(EnvelopeParams::default())),
             // See the main gain example for more details
             mod_ty: Arc::new(Mutex::new(ModulationType::default())),
             reset_phase: Arc::new(Mutex::new(false)),
             gain_ty: Arc::new(Mutex::new(GainType::default())),
             synth: Arc::new(Mutex::new(OscArray::default())),
             solar_system: Arc::new(Mutex::new(SolarSystem::new())),
+
+            delay: FloatParam::new("Gain", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            //Otherwise we get such a pesky *clicking* on attack
+            attack: FloatParam::new(
+                "Attack",
+                0.1,
+                FloatRange::Linear {
+                    min: 0.0001,
+                    max: 1.0,
+                },
+            ),
+            hold: FloatParam::new("Hold", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            decay: FloatParam::new("Decay", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            sustain: FloatParam::new("Sustain", 0.8, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            release: FloatParam::new("Release", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 }),
         }
     }
 }
@@ -129,11 +164,7 @@ impl Plugin for Orbital {
             self.params.editor_state.clone(),
             renderer,
             |_, _| {},
-            move |egui_ctx, _setter, renderer| {
-                egui::CentralPanel::default().show(egui_ctx, |ui| {
-                    ui.add(renderer);
-                });
-            },
+            move |egui_ctx, setter, renderer| renderer.draw(egui_ctx, setter),
         )
     }
 
@@ -166,13 +197,7 @@ impl Plugin for Orbital {
                 .map(|lck| lck.get_solar_state())
                 .unwrap_or(SolarSystem::new().get_solar_state()),
         );
-        self.synth.set_envelopes(
-            self.params
-                .adsr
-                .lock()
-                .map(|i| i.clone())
-                .unwrap_or(EnvelopeParams::default()),
-        );
+        self.synth.set_envelopes(self.get_adsr_settings());
         self.synth.bank.mod_ty = self
             .params
             .mod_ty
@@ -211,36 +236,27 @@ impl Plugin for Orbital {
         // TODO: check if we maybe should do that async
         for _try in 0..10 {
             match self.com_channel.1.try_recv() {
-                Ok(msg) => {
-                    match msg {
-                        ComMsg::StateChange(s) => self.synth.bank.on_state_change(s),
-                        ComMsg::ModRelationChanged(new) => {
-                            if let Ok(mut mr) = self.params.mod_ty.try_lock() {
-                                *mr = new.clone();
-                            }
-                            self.synth.bank.mod_ty = new
+                Ok(msg) => match msg {
+                    ComMsg::StateChange(s) => self.synth.bank.on_state_change(s),
+                    ComMsg::ModRelationChanged(new) => {
+                        if let Ok(mut mr) = self.params.mod_ty.try_lock() {
+                            *mr = new.clone();
                         }
-                        //Note we only use the notify
-                        ComMsg::EnvChanged(env_param) => {
-                            if let Ok(mut p) = self.params.adsr.try_lock() {
-                                *p = env_param.clone();
-                            }
-                            self.synth.set_envelopes(env_param)
-                        }
-                        ComMsg::GainChange(new_gain) => {
-                            if let Ok(mut p) = self.params.gain_ty.try_lock() {
-                                *p = new_gain.clone();
-                            }
-                            self.synth.bank.gain_ty = new_gain;
-                        }
-                        ComMsg::ResetPhaseChanged(new) => {
-                            if let Ok(mut p) = self.params.reset_phase.try_lock() {
-                                *p = new;
-                            }
-                            self.synth.bank.reset_phase = new;
-                        }
+                        self.synth.bank.mod_ty = new
                     }
-                }
+                    ComMsg::GainChange(new_gain) => {
+                        if let Ok(mut p) = self.params.gain_ty.try_lock() {
+                            *p = new_gain.clone();
+                        }
+                        self.synth.bank.gain_ty = new_gain;
+                    }
+                    ComMsg::ResetPhaseChanged(new) => {
+                        if let Ok(mut p) = self.params.reset_phase.try_lock() {
+                            *p = new;
+                        }
+                        self.synth.bank.reset_phase = new;
+                    }
+                },
                 Err(e) => {
                     match e {
                         TryRecvError::Disconnected => {
@@ -251,6 +267,12 @@ impl Plugin for Orbital {
                 }
             }
         }
+
+        //Overwrite ADSR
+        //TODO: Find out if anything changed. We have two sources for that:
+        //      1. From ui (we can track that)
+        //      2. From DAW (no idea how to track that)
+        self.synth.set_envelopes(self.get_adsr_settings());
 
         while let Some(ev) = context.next_event() {
             match ev {
