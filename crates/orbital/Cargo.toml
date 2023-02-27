@@ -11,7 +11,7 @@ crate-type = ["cdylib", "lib"]
 
 [features]
 
-default = ["profile"]
+default = []
 profile = ["puffin", "puffin_http"]
 
 [dependencies]
