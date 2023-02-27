@@ -1,7 +1,10 @@
 use nih_plug::prelude::Enum;
 use serde::{Deserialize, Serialize};
 
-use crate::osc::{modulator::ModulatorOsc, primary::PrimaryOsc, sigmoid, ModulationType};
+use crate::{
+    osc::{modulator::ModulatorOsc, primary::PrimaryOsc, sigmoid, ModulationType},
+    renderer::solar_system::SolarSystem,
+};
 
 #[derive(Clone)]
 pub struct SolarState {
@@ -55,7 +58,10 @@ impl GainType {
 ///Communication messages from the renderer to the oscillator bank.
 #[derive(Clone)]
 pub enum ComMsg {
-    StateChange(SolarState),
+    StateChange {
+        osc_state: SolarState,
+        system: SolarSystem,
+    },
     ModRelationChanged(ModulationType),
     GainChange(GainType),
 }

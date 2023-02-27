@@ -7,7 +7,7 @@ use crate::{
 };
 use crossbeam::channel::Sender;
 use egui::Context;
-use nih_plug::prelude::ParamSetter;
+use nih_plug::{nih_log, prelude::ParamSetter};
 use nih_plug_egui::egui::Sense;
 
 use self::{
@@ -31,10 +31,19 @@ pub struct Renderer {
     pub last_update: Instant,
     pub msg_sender: Sender<ComMsg>,
     show_help: bool,
+    state_loaded: bool,
 }
 
 impl Renderer {
     pub fn draw(&mut self, eguictx: &Context, setter: &ParamSetter) {
+        if !self.state_loaded {
+            nih_log!("Try post load!");
+            if let Ok(s) = self.params.solar_system.try_lock() {
+                nih_log!("Overwriting with post loaded state!");
+                self.system = s.clone();
+            }
+        }
+
         //setup egui ui context as you usually would. But we gain the `setter` param which we cant
         // access if we implement `ui()` in egui's Widget trait.
         egui::CentralPanel::default().show(eguictx, |ui|{
@@ -160,13 +169,21 @@ There are four main interactions. :
 
 impl Renderer {
     pub fn new(params: Arc<OrbitalParams>, com_sender: Sender<ComMsg>) -> Self {
-        let system = params
-            .solar_system
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or(SolarSystem::new());
+        let mut state_loaded = true;
+        let system = if let Ok(s) = params.solar_system.lock() {
+            nih_log!(
+                "Loading saved system state with {} primaries!",
+                s.orbitals.len()
+            );
+            s.clone()
+        } else {
+            nih_log!("Failed to load solar state, falling back to default state!");
+            state_loaded = false;
+            SolarSystem::new()
+        };
         Renderer {
             params,
+            state_loaded,
             last_update: Instant::now(),
             msg_sender: com_sender,
             show_help: false,

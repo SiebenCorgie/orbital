@@ -4,7 +4,7 @@ use com::{ComMsg, GainType};
 use crossbeam::channel::{Receiver, Sender, TryRecvError};
 use envelope::EnvelopeParams;
 use nih_plug::{
-    nih_error, nih_export_clap, nih_export_vst3, nih_log,
+    nih_error, nih_export_clap, nih_export_vst3, nih_log, nih_trace,
     prelude::{
         AsyncExecutor, AudioIOLayout, AuxiliaryBuffers, BoolParam, Buffer, BufferConfig,
         ClapFeature, ClapPlugin, Editor, FloatParam, FloatRange, InitContext, MidiConfig,
@@ -44,7 +44,7 @@ pub struct Orbital {
 }
 
 impl Orbital {
-    const NUM_CHANNELS: u32 = 2;
+    const NUM_CHANNELS: u32 = 1;
 
     fn get_adsr_settings(&self) -> EnvelopeParams {
         EnvelopeParams {
@@ -62,9 +62,9 @@ impl Orbital {
 pub struct OrbitalParams {
     /// The editor state, saved together with the parameter state so the custom scaling can be
     /// restored.
-    #[persist = "editor-state"]
+    #[persist = "editorstate"]
     editor_state: Arc<EguiState>,
-    #[id = "reset_phase"]
+    #[id = "ResetPhase"]
     pub reset_phase: BoolParam,
 
     #[persist = "modty"]
@@ -105,6 +105,7 @@ impl Default for Orbital {
 
 impl Default for OrbitalParams {
     fn default() -> Self {
+        nih_log!("Loading Default state!");
         Self {
             editor_state: EguiState::from_size(800, 800),
             // See the main gain example for more details
@@ -196,13 +197,14 @@ impl Plugin for Orbital {
         }
 
         //init synth to current state, or default
-        self.synth.bank.on_state_change(
-            self.params
-                .solar_system
-                .lock()
-                .map(|lck| lck.get_solar_state())
-                .unwrap_or(SolarSystem::new().get_solar_state()),
-        );
+        self.synth
+            .bank
+            .on_state_change(if let Ok(s) = self.params.solar_system.lock() {
+                s.get_solar_state()
+            } else {
+                nih_error!("Could not find saved solar state for osc bank!");
+                SolarSystem::new().get_solar_state()
+            });
         self.synth.set_envelopes(self.get_adsr_settings());
         self.synth.bank.mod_ty = self
             .params
@@ -243,7 +245,18 @@ impl Plugin for Orbital {
         for _try in 0..10 {
             match self.com_channel.1.try_recv() {
                 Ok(msg) => match msg {
-                    ComMsg::StateChange(s) => self.synth.bank.on_state_change(s),
+                    ComMsg::StateChange { system, osc_state } => {
+                        if let Ok(mut lck) = self.params.solar_system.try_lock() {
+                            nih_trace!(
+                                "Overwriting solar state with {} prim!",
+                                system.orbitals.len()
+                            );
+                            *lck = system;
+                        } else {
+                            nih_error!("Failed to overwrite solar state!");
+                        }
+                        self.synth.bank.on_state_change(osc_state)
+                    }
                     ComMsg::ModRelationChanged(new) => {
                         if let Ok(mut mr) = self.params.mod_ty.try_lock() {
                             *mr = new.clone();

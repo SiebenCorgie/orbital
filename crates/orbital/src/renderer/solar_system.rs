@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crossbeam::channel::Sender;
 use egui::{epaint::CircleShape, InputState, Painter, PointerButton, Response, Shape, Stroke};
-use nih_plug::nih_log;
+use nih_plug::{nih_error, nih_log};
 use nih_plug_egui::egui::Pos2;
 use serde_derive::{Deserialize, Serialize};
 
@@ -72,7 +72,7 @@ impl SlotAllocator {
 pub struct SolarSystem {
     last_center: Pos2,
     //Primary orbitals. Each child is by necessity a modulator
-    orbitals: Vec<Orbital>,
+    pub(crate) orbitals: Vec<Orbital>,
     allocator: SlotAllocator,
     #[serde(default = "Instant::now", skip)]
     pub last_update: Instant,
@@ -81,6 +81,7 @@ pub struct SolarSystem {
 
 impl SolarSystem {
     pub fn new() -> Self {
+        nih_log!("Creating new SolarSystem");
         let mut sys = SolarSystem {
             last_center: Pos2::ZERO,
             orbitals: Vec::new(),
@@ -209,8 +210,12 @@ impl SolarSystem {
         }
 
         if draw_state_changed {
-            //TODO handle breakdown
-            let _ = coms.send(ComMsg::StateChange(self.get_solar_state()));
+            if let Err(e) = coms.send(ComMsg::StateChange {
+                osc_state: self.get_solar_state(),
+                system: self.clone(),
+            }) {
+                nih_error!("Faild to send state change: {}", e);
+            }
         }
     }
 
