@@ -17,7 +17,7 @@ use osc_array::OscArray;
 use renderer::{solar_system::SolarSystem, Renderer};
 use std::{
     num::NonZeroU32,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 mod com;
@@ -74,7 +74,7 @@ pub struct OrbitalParams {
     #[persist = "Synth"]
     pub synth: Arc<Mutex<OscArray>>,
     #[persist = "SolarSystem"]
-    pub solar_system: Arc<Mutex<SolarSystem>>,
+    pub solar_system: Arc<RwLock<SolarSystem>>,
 
     #[id = "Delay"]
     pub delay: FloatParam,
@@ -112,7 +112,7 @@ impl Default for OrbitalParams {
             reset_phase: BoolParam::new("Reset Phase", true),
             gain_ty: Arc::new(Mutex::new(GainType::default())),
             synth: Arc::new(Mutex::new(OscArray::default())),
-            solar_system: Arc::new(Mutex::new(SolarSystem::new())),
+            solar_system: Arc::new(RwLock::new(SolarSystem::new())),
 
             delay: FloatParam::new("Gain", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_value_to_string(Arc::new(|v| format!("{:.2}", v))),
@@ -199,7 +199,7 @@ impl Plugin for Orbital {
         self.synth.bank.on_state_change(
             self.params
                 .solar_system
-                .lock()
+                .try_read()
                 .map(|lck| lck.get_solar_state())
                 .unwrap_or(SolarSystem::new().get_solar_state()),
         );

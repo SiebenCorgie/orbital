@@ -7,7 +7,7 @@ use crate::{
 };
 use crossbeam::channel::Sender;
 use egui::Context;
-use nih_plug::prelude::ParamSetter;
+use nih_plug::{nih_error, prelude::ParamSetter};
 use nih_plug_egui::egui::Sense;
 
 use self::{
@@ -27,7 +27,6 @@ pub mod switch;
 
 pub struct Renderer {
     pub params: Arc<OrbitalParams>,
-    pub system: SolarSystem,
     pub last_update: Instant,
     pub msg_sender: Sender<ComMsg>,
     show_help: bool,
@@ -118,10 +117,15 @@ impl Renderer {
                         });
                         ui.add_space(20.0);
                         ui.vertical(|ui| {
-                            ui.add_space(10.0);
-                            if ui.add(PPButton::new(&mut self.system.is_paused)).clicked() {
-                                self.system.reset_anim_state();
+                            if let Ok(mut system) = self.params.solar_system.try_write(){
+                                ui.add_space(10.0);
+                                if ui.add(PPButton::new(&mut system.is_paused)).clicked() {
+                                    system.reset_anim_state();
+                                }
+                            }else{
+                                nih_error!("Could not set anim state!");
                             }
+
                         })
                     })
                 })
@@ -130,10 +134,12 @@ impl Renderer {
         let _ctpanel = egui::CentralPanel::default().show(ui.ctx(), |ui| {
             let rect = ui.clip_rect();
             let (response, painter) = ui.allocate_painter(rect.size(), Sense::click_and_drag());
-            self.system
-                .handle_response(&mut self.msg_sender, &response, &ui.input());
-
-            self.system.paint(rect.center(), &painter);
+            if let Ok(mut system) = self.params.solar_system.try_write(){
+                system.handle_response(&mut self.msg_sender, &response, &ui.input());
+                system.paint(rect.center(), &painter);
+            }else{
+                nih_error!("Could not set solar state!");
+            }
         });
 
         if self.show_help {
@@ -160,17 +166,11 @@ There are four main interactions. :
 
 impl Renderer {
     pub fn new(params: Arc<OrbitalParams>, com_sender: Sender<ComMsg>) -> Self {
-        let system = params
-            .solar_system
-            .lock()
-            .map(|s| s.clone())
-            .unwrap_or(SolarSystem::new());
         Renderer {
             params,
             last_update: Instant::now(),
             msg_sender: com_sender,
             show_help: false,
-            system,
         }
     }
 }
