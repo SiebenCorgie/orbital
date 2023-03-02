@@ -6,7 +6,7 @@ use crate::{
     OrbitalParams,
 };
 use crossbeam::channel::Sender;
-use egui::Context;
+use egui::{Context, Slider};
 use nih_plug::{nih_error, prelude::ParamSetter};
 use nih_plug_egui::egui::Sense;
 
@@ -155,6 +155,18 @@ There are four main interactions. :
     3.: Drag out a sibling orbital from an existing one by clicking and dragging out the edge.
     4.: Scroll while hovering over an object to adjust its relative or absolute speed depending on the selected mode on the top bar.");
                     //})
+                });
+        }else{
+            let mut val = 0.0;
+            let _bottom_resp = egui::panel::TopBottomPanel::bottom("bottom_panel")
+                //.max_height(20.0)
+                .resizable(false)
+                .show(ui.ctx(), |ui| {
+                    ui.label(format!("Planet: {:?}", self.params.solar_system.read().unwrap().selected.clone()));
+                    ui.horizontal(|ui|{
+                        ui.label("Speed");
+                        ui.add(Slider::new(&mut val, 0f32..=10f32));
+                    })
                 });
         }
 

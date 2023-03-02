@@ -8,7 +8,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     com::{ComMsg, SolarState},
-    osc::OscillatorBank,
+    osc::{modulator::ParentIndex, OscillatorBank},
 };
 
 use super::orbital::{ObjTy, Orbital};
@@ -77,6 +77,8 @@ pub struct SolarSystem {
     #[serde(default = "Instant::now", skip)]
     pub last_update: Instant,
     pub is_paused: bool,
+    #[serde(skip)]
+    pub selected: Option<ParentIndex>,
 }
 
 impl SolarSystem {
@@ -87,6 +89,7 @@ impl SolarSystem {
             allocator: SlotAllocator::default(),
             last_update: Instant::now(),
             is_paused: true,
+            selected: None,
         };
 
         //setup a base system. New is only called if there is no state at all,
@@ -111,7 +114,7 @@ impl SolarSystem {
         }));
 
         for orbital in self.orbitals.iter() {
-            orbital.paint(painter);
+            orbital.paint(painter, self.selected);
         }
         self.last_center = center;
     }
@@ -138,8 +141,13 @@ impl SolarSystem {
             if response.drag_started() {
                 let mut slot_candidate = self.allocator.allocate_mod();
                 for orbital in &mut self.orbitals {
-                    if orbital.on_drag_start(interaction_pos, &mut slot_candidate) {
+                    if let Some(taken_orbital) =
+                        orbital.on_drag_start(interaction_pos, &mut slot_candidate)
+                    {
+                        //Mark as taken and setup internal "selected" state
                         click_taken = true;
+                        nih_log!("Selected: {:?}", taken_orbital);
+                        self.selected = Some(taken_orbital);
                         break;
                     }
                 }
@@ -169,9 +177,25 @@ impl SolarSystem {
 
             //checkout response
             if response.clicked() && !click_taken {
+                println!("Checking click!");
+
+                //try to select anything with this click, if we can't, we spawn a new entity
+                let mut select_any = false;
+                for orbital in &mut self.orbitals {
+                    if let Some(idx) = orbital.on_select(interaction_pos) {
+                        select_any = true;
+                        nih_log!("Selected: {:?}", idx);
+                        self.selected = Some(idx);
+                        draw_state_changed = true;
+                        break;
+                    }
+                }
+
                 //try to find an not yet used osc row
-                self.insert_primary(interaction_pos, self.last_center);
-                draw_state_changed = true;
+                if !select_any {
+                    self.insert_primary(interaction_pos, self.last_center);
+                    draw_state_changed = true;
+                }
             }
 
             let scroll_delta = input.scroll_delta.y / 1000.0;
@@ -186,8 +210,22 @@ impl SolarSystem {
                 for orbit in (0..self.orbitals.len()).rev() {
                     if self.orbitals[orbit].on_delete(interaction_pos, &mut self.allocator) {
                         let removed_primary = self.orbitals.remove(orbit);
-                        self.allocator.free_primary(removed_primary.osc_slot)
+                        self.allocator.free_primary(removed_primary.osc_slot);
                     }
+                }
+                //If the current selected is now marked as free, remove selection state.
+                match self.selected {
+                    Some(ParentIndex::Primary(p)) => {
+                        if !self.allocator.primary_slots[p] {
+                            self.selected = None;
+                        }
+                    }
+                    Some(ParentIndex::Modulator(m)) => {
+                        if !self.allocator.mod_slots[m] {
+                            self.selected = None;
+                        }
+                    }
+                    _ => {}
                 }
                 draw_state_changed = true;
             }

@@ -174,7 +174,7 @@ pub struct Orbital {
     //abstract orbital speed.
     speed_index: i32,
 
-    orbit_width: f32,
+    //true whenever paint() should highlight
     planet_highlight: bool,
 
     #[serde(skip)]
@@ -205,7 +205,6 @@ impl Orbital {
         let mut new_orb = Orbital {
             center,
             radius,
-            orbit_width: Self::ORBIT_LINE_WIDTH,
             planet_highlight: false,
 
             phase: 0.0,
@@ -223,17 +222,34 @@ impl Orbital {
         new_orb
     }
 
-    pub fn paint(&self, painter: &Painter) {
+    pub fn paint(&self, painter: &Painter, selected: Option<ParentIndex>) {
         //paint orbit
+        let force_highlight = if let Some(selected) = selected {
+            if self.is_me(selected) {
+                true
+            } else {
+                self.planet_highlight
+            }
+        } else {
+            self.planet_highlight
+        };
+
         painter.add(Shape::Circle(CircleShape {
             radius: self.radius,
             center: self.center,
-            stroke: Stroke::new(self.orbit_width, Color32::WHITE),
+            stroke: Stroke::new(
+                if force_highlight {
+                    Self::ORBIT_LINE_FAT
+                } else {
+                    Self::ORBIT_LINE_WIDTH
+                },
+                Color32::WHITE,
+            ),
             fill: Color32::TRANSPARENT,
         }));
 
         for c in &self.children {
-            c.paint(painter);
+            c.paint(painter, selected);
         }
 
         //if currently dragging out a new one, draw that
@@ -242,15 +258,19 @@ impl Orbital {
             let mut tmp = Orbital::new_primary(*at, self.obj_pos(), *slot);
             tmp.obj = *obj;
             tmp.radius = tmp.radius.clamp(Self::MIN_ORBIT, tmp.obj.max_orbit());
-            tmp.paint(painter);
+            tmp.paint(painter, selected);
         }
 
-        self.obj.paint(
-            self.speed_index,
-            self.obj_pos(),
-            self.planet_highlight,
-            painter,
-        );
+        self.obj
+            .paint(self.speed_index, self.obj_pos(), force_highlight, painter);
+    }
+
+    fn is_me(&self, idx: ParentIndex) -> bool {
+        if let ObjTy::Planet = self.obj {
+            idx == ParentIndex::Primary(self.osc_slot)
+        } else {
+            idx == ParentIndex::Modulator(self.osc_slot)
+        }
     }
 
     fn obj_pos(&self) -> Pos2 {
@@ -304,7 +324,12 @@ impl Orbital {
         }
     }
 
-    pub fn on_drag_start(&mut self, at: Pos2, slot_candidates: &mut Option<usize>) -> bool {
+    ///Traverses the hierarchy. If any of the orbits reacts to the drag start, returns the orbits index.
+    pub fn on_drag_start(
+        &mut self,
+        at: Pos2,
+        slot_candidates: &mut Option<usize>,
+    ) -> Option<ParentIndex> {
         let used = match (self.is_on_orbit_handle(at), self.is_on_planet(at)) {
             (false, true) => {
                 //drag start on planet, start dragging out a child
@@ -336,13 +361,22 @@ impl Orbital {
         //if unused, recurse
         if !used {
             for c in &mut self.children {
-                if c.on_drag_start(at, slot_candidates) {
-                    return true;
+                let res = c.on_drag_start(at, slot_candidates);
+                if res.is_some() {
+                    return res;
                 }
             }
-        }
 
-        false
+            //children didn't use either
+            None
+        } else {
+            //we used it, send back our index
+            if let ObjTy::Planet = self.obj {
+                Some(ParentIndex::Primary(self.osc_slot))
+            } else {
+                Some(ParentIndex::Modulator(self.osc_slot))
+            }
+        }
     }
 
     ///handles a drag event. Used with drag_start and release. Returns true if it was used
@@ -443,6 +477,27 @@ impl Orbital {
         rad < (Self::OBJSIZE + Self::HANDLE_WIDTH)
     }
 
+    ///Propagates the click through the tree and retruns a selected orbital if possible.
+    pub fn on_select(&self, loc: Pos2) -> Option<ParentIndex> {
+        if self.is_on_planet(loc) || self.is_on_orbit_handle(loc) {
+            if let ObjTy::Planet = self.obj {
+                return Some(ParentIndex::Primary(self.osc_slot));
+            } else {
+                return Some(ParentIndex::Modulator(self.osc_slot));
+            }
+        }
+
+        //try children
+        for c in &self.children {
+            let res = c.on_select(loc);
+            if res.is_some() {
+                return res;
+            }
+        }
+
+        None
+    }
+
     //checks if self should be deleted
     pub fn on_delete(&mut self, at: Pos2, allocator: &mut SlotAllocator) -> bool {
         if self.is_on_orbit_handle(at) || self.is_on_planet(at) {
@@ -481,23 +536,16 @@ impl Orbital {
             //if hovering over our orbit, thicken line
             match (self.is_on_orbit_handle(at), self.is_on_planet(at)) {
                 (false, false) => {
-                    //reset orbit render width
-                    self.orbit_width = Self::ORBIT_LINE_WIDTH;
                     self.planet_highlight = false;
                 }
                 (true, true) => {
                     self.planet_highlight = true;
-                    self.orbit_width = Self::ORBIT_LINE_FAT;
                     is_interactable = true;
                 }
                 (true, false) => {
-                    //only on orbit, widen orbit line
-                    self.orbit_width = Self::ORBIT_LINE_FAT;
-                    self.planet_highlight = false;
+                    self.planet_highlight = true;
                 }
                 (_, true) => {
-                    //on planet, preffer over orbit.
-                    self.orbit_width = Self::ORBIT_LINE_WIDTH;
                     self.planet_highlight = true;
                     is_interactable = true;
                 }
