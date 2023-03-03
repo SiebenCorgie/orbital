@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::{f32::consts::PI, sync::Arc, time::Instant};
 
 use crate::{
     com::{ComMsg, GainType},
@@ -6,13 +6,14 @@ use crate::{
     OrbitalParams,
 };
 use crossbeam::channel::Sender;
-use egui::{Context, Slider};
+use egui::{Color32, Context, DragValue, Painter, Response, Slider, Stroke, Vec2};
 use nih_plug::{nih_error, prelude::ParamSetter};
 use nih_plug_egui::egui::Sense;
 
 use self::{
     adsrgui::{GainSwitch, Knob},
     modswitch::ModSwitch,
+    painter_button::PainterButton,
     ppbutton::PPButton,
     solar_system::SolarSystem,
     switch::Switch,
@@ -21,6 +22,7 @@ use self::{
 pub mod adsrgui;
 pub mod modswitch;
 pub mod orbital;
+pub mod painter_button;
 pub mod ppbutton;
 pub mod solar_system;
 pub mod switch;
@@ -36,7 +38,6 @@ impl Renderer {
     pub fn draw(&mut self, eguictx: &Context, setter: &ParamSetter) {
         //setup egui ui context as you usually would. But we gain the `setter` param which we cant
         // access if we implement `ui()` in egui's Widget trait.
-        egui::CentralPanel::default().show(eguictx, |ui|{
 
         let mut mod_ty = self
             .params
@@ -52,12 +53,11 @@ impl Renderer {
             .map(|g| g.clone())
             .unwrap_or(GainType::default());
 
-
-        let _tp = egui::TopBottomPanel::top("Toppanel")
+        let tp = egui::TopBottomPanel::top("Toppanel")
             .max_height(50.0)
             .resizable(false)
             .min_height(10.0)
-            .show(ui.ctx(), |ui| {
+            .show(eguictx, |ui| {
                 ui.centered_and_justified(|ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
@@ -98,80 +98,138 @@ impl Renderer {
                             ui.add(Knob::new(&self.params.attack, setter).with_label("Attack"))
                         });
                         ui.vertical(|ui| {
-                                ui.add(Knob::new(&self.params.hold, setter).with_label("Hold"))
+                            ui.add(Knob::new(&self.params.hold, setter).with_label("Hold"))
                         });
                         ui.vertical(|ui| {
-                                ui.add(Knob::new(&self.params.decay, setter).with_label("Decay"))
+                            ui.add(Knob::new(&self.params.decay, setter).with_label("Decay"))
                         });
                         ui.vertical(|ui| {
-                                ui.add(Knob::new(&self.params.sustain, setter).with_label("Sustain"))
+                            ui.add(Knob::new(&self.params.sustain, setter).with_label("Sustain"))
                         });
                         ui.vertical(|ui| {
-                                ui.add(Knob::new(&self.params.release, setter).with_label("Release"))
+                            ui.add(Knob::new(&self.params.release, setter).with_label("Release"))
                         });
 
                         ui.add_space(10.0);
 
                         ui.vertical(|ui| {
-                            ui.add(Switch::new(&self.params.reset_phase, setter).with_label("Reset Phase"))
+                            ui.add(
+                                Switch::new(&self.params.reset_phase, setter)
+                                    .with_label("Reset Phase"),
+                            )
                         });
                         ui.add_space(20.0);
                         ui.vertical(|ui| {
-                            if let Ok(mut system) = self.params.solar_system.try_write(){
+                            if let Ok(mut system) = self.params.solar_system.try_write() {
                                 ui.add_space(10.0);
                                 if ui.add(PPButton::new(&mut system.is_paused)).clicked() {
                                     system.reset_anim_state();
                                 }
-                            }else{
+                            } else {
                                 nih_error!("Could not set anim state!");
                             }
-
                         })
                     })
                 })
             });
 
-        let _ctpanel = egui::CentralPanel::default().show(ui.ctx(), |ui| {
-            let rect = ui.clip_rect();
-            let (response, painter) = ui.allocate_painter(rect.size(), Sense::click_and_drag());
-            if let Ok(mut system) = self.params.solar_system.try_write(){
-                system.handle_response(&mut self.msg_sender, &response, &ui.input());
-                system.paint(rect.center(), &painter);
-            }else{
-                nih_error!("Could not set solar state!");
-            }
-        });
+        let bt = egui::panel::TopBottomPanel::bottom("bottom_panel")
+            .min_height(50.0)
+            .resizable(false)
+            .show(eguictx, |ui| {
 
-        if self.show_help {
-            let _bottom_resp = egui::panel::TopBottomPanel::bottom("bottom_panel")
-                //.max_height(20.0)
-                .resizable(false)
-                .show(ui.ctx(), |ui| {
-                    //ui.centered_and_justified(|ui| {
-                        ui.label("
+                //Might have to show the help panel.
+                if self.show_help{
+                    ui.label("
 There are four main interactions. :
     1.: Click somewhere to create a new orbital, right click an orbital to delete it.
     2.: Select and drag an existing orbit to adjust the influence of the orbital on its parent.
     3.: Drag out a sibling orbital from an existing one by clicking and dragging out the edge.
-    4.: Scroll while hovering over an object to adjust its relative or absolute speed depending on the selected mode on the top bar.");
-                    //})
-                });
-        }else{
-            let mut val = 0.0;
-            let _bottom_resp = egui::panel::TopBottomPanel::bottom("bottom_panel")
-                //.max_height(20.0)
-                .resizable(false)
-                .show(ui.ctx(), |ui| {
-                    ui.label(format!("Planet: {:?}", self.params.solar_system.read().unwrap().selected.clone()));
-                    ui.horizontal(|ui|{
-                        ui.label("Speed");
-                        ui.add(Slider::new(&mut val, 0f32..=10f32));
-                    })
-                });
-        }
+    4.: Scroll while hovering over an object to adjust its relative or absolute speed depending on the selected mode on the top bar."
+                    );
+                }else{
+                    if let Ok(mut system) = self.params.solar_system.write() {
+                        let mut dirty_flag = system.is_dirty;
+                        let mut add_flag = system.is_add_child;
+                        if let Some(orbital) = system.get_selected_orbital() {
+                            ui.add_space(7.5);
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui|{
+                                    ui.label("Speed");
+                                    if ui.add(Slider::new(&mut orbital.speed_index, -20..=20).clamp_to_range(false)).changed(){
+                                        dirty_flag = true;
+                                    };
+                                });
 
-        //tp.response.union(ctpanel.response)
-        //
+                                ui.spacing();
+
+                                ui.vertical(|ui|{
+                                    ui.label("Orbit");
+                                    if ui.add(Slider::new(&mut orbital.radius, orbital.obj.min_orbit()..=orbital.obj.max_orbit())).changed(){
+                                        dirty_flag = true;
+                                    };
+                                });
+
+
+                                ui.spacing();
+
+                                ui.vertical(|ui|{
+                                    ui.label("Offset");
+                                    let mut off = orbital.offset.to_degrees();
+                                    if ui.add(Slider::new(&mut off, 0f32..=360.0).suffix("°")).changed(){
+                                        orbital.offset = off.to_radians();
+                                        dirty_flag = true;
+                                    };
+                                });
+
+                                ui.spacing();
+
+                                let add_child_painter = |painter: &Painter, resp: &mut Response|{
+
+                                    let rect = painter.clip_rect();
+                                    let parent_loc = rect.center();
+                                    let parent_orbit_at = parent_loc - Vec2::splat(14.0);
+
+                                    let stroke = if resp.hovered(){
+                                        Stroke::new(2.0, Color32::WHITE)
+                                    }else{
+                                        Stroke::new(1.0, Color32::WHITE)
+                                    };
+
+                                    painter.circle_stroke(parent_orbit_at, 20.0, stroke);
+                                    painter.circle_filled(parent_loc, 4.0, Color32::WHITE);
+
+
+                                    if resp.hovered(){
+                                        painter.circle_stroke(parent_loc, 15.0, stroke);
+                                        painter.circle_filled(parent_loc + Vec2::splat(10.0), 4.0, Color32::WHITE);
+                                    }
+                                };
+                                if ui.add(PainterButton::new(&add_child_painter).with_size(Vec2::new(60.0, 40.0))).clicked(){
+                                    add_flag = true;
+                                    dirty_flag = true;
+                                }
+                            });
+                        }
+                        system.is_dirty = dirty_flag;
+                        system.is_add_child = add_flag;
+                    } else {
+                        nih_error!("Could not lock system for display!");
+                    }
+                }
+            });
+        egui::CentralPanel::default().show(eguictx, |ui| {
+            let mut rect = ui.clip_rect();
+            const RED: f32 = 85f32;
+            rect.max.y -= RED;
+            rect.min.y += RED;
+            let (response, painter) = ui.allocate_painter(rect.size(), Sense::click_and_drag());
+            if let Ok(mut system) = self.params.solar_system.try_write() {
+                system.handle_response(&mut self.msg_sender, &response, &ui.input());
+                system.paint(rect.center(), &painter);
+            } else {
+                nih_error!("Could not set solar state!");
+            }
         });
     }
 }

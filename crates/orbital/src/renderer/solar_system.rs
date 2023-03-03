@@ -79,6 +79,13 @@ pub struct SolarSystem {
     pub is_paused: bool,
     #[serde(skip)]
     pub selected: Option<ParentIndex>,
+
+    //If set from the outside, makes sure everything is redrawn.
+    #[serde(skip)]
+    pub is_dirty: bool,
+    //If set, adds a new child on next update
+    #[serde(skip)]
+    pub is_add_child: bool,
 }
 
 impl SolarSystem {
@@ -90,6 +97,8 @@ impl SolarSystem {
             last_update: Instant::now(),
             is_paused: true,
             selected: None,
+            is_dirty: false,
+            is_add_child: false,
         };
 
         //setup a base system. New is only called if there is no state at all,
@@ -126,6 +135,19 @@ impl SolarSystem {
         response: &Response,
         input: &InputState,
     ) {
+        //handle child add if needed.
+        if self.is_add_child {
+            self.is_add_child = false;
+            if let Some(index) = self.allocator.allocate_mod() {
+                if let Some(orb) = self.get_selected_orbital() {
+                    orb.spawn_child(index);
+                    self.selected = Some(ParentIndex::Modulator(index));
+                } else {
+                    self.allocator.free_mod(index);
+                }
+            }
+        }
+
         //update hover if there is any
         if let Some(hp) = response.hover_pos() {
             for orb in &mut self.orbitals {
@@ -146,7 +168,6 @@ impl SolarSystem {
                     {
                         //Mark as taken and setup internal "selected" state
                         click_taken = true;
-                        nih_log!("Selected: {:?}", taken_orbital);
                         self.selected = Some(taken_orbital);
                         break;
                     }
@@ -171,20 +192,19 @@ impl SolarSystem {
 
             if response.drag_released() {
                 for orbital in &mut self.orbitals {
-                    orbital.on_drag_end();
+                    if let Some(idx) = orbital.on_drag_end() {
+                        self.selected = Some(idx);
+                    }
                 }
             }
 
             //checkout response
             if response.clicked() && !click_taken {
-                println!("Checking click!");
-
                 //try to select anything with this click, if we can't, we spawn a new entity
                 let mut select_any = false;
                 for orbital in &mut self.orbitals {
                     if let Some(idx) = orbital.on_select(interaction_pos) {
                         select_any = true;
-                        nih_log!("Selected: {:?}", idx);
                         self.selected = Some(idx);
                         draw_state_changed = true;
                         break;
@@ -231,6 +251,12 @@ impl SolarSystem {
             }
         }
 
+        //promote dirty flag to draw state changed flag and reset
+        if self.is_dirty {
+            self.is_dirty = false;
+            draw_state_changed = true;
+        }
+
         //update inner animation, but only if not pausing
         if !self.is_paused {
             let delta = self.last_update.elapsed().as_secs_f32();
@@ -264,6 +290,8 @@ impl SolarSystem {
         };
 
         self.orbitals.push(Orbital::new_primary(at, center, slot));
+        //set as selected.
+        self.selected = Some(ParentIndex::Primary(slot));
     }
 
     //builds the solar state from the current state. Used mainly to init
@@ -279,5 +307,20 @@ impl SolarSystem {
         }
 
         builder
+    }
+
+    pub fn get_selected_orbital(&mut self) -> Option<&mut Orbital> {
+        if let Some(index) = self.selected {
+            for orbital in &mut self.orbitals {
+                let res = orbital.find_index_mut(index);
+                if res.is_some() {
+                    return res;
+                }
+            }
+
+            None
+        } else {
+            None
+        }
     }
 }

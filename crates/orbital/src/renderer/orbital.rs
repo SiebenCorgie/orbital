@@ -38,7 +38,7 @@ pub fn rotate_vec2(src: Vec2, angle: f32) -> Vec2 {
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub(super) enum ObjTy {
+pub enum ObjTy {
     Sun,
     Planet,
     Moon,
@@ -107,6 +107,14 @@ impl ObjTy {
             Orbital::MAX_ORBIT_PRIM
         }
     }
+
+    pub fn min_orbit(&self) -> f32 {
+        if self.is_secondary() {
+            Orbital::MIN_ORBIT
+        } else {
+            Orbital::MIN_ORBIT
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -165,14 +173,14 @@ pub struct Orbital {
     // center of frame
     center: Pos2,
     //radius of orbit, basically pitch of the osc
-    radius: f32,
+    pub radius: f32,
     //offest on orbit. Translates to phase shift on osc. In radiant
-    offset: f32,
+    pub offset: f32,
 
     //current phase (in radiant) of this orbital.
     phase: f32,
     //abstract orbital speed.
-    speed_index: i32,
+    pub speed_index: i32,
 
     //true whenever paint() should highlight
     planet_highlight: bool,
@@ -180,7 +188,7 @@ pub struct Orbital {
     #[serde(skip)]
     interaction: Interaction,
 
-    obj: ObjTy,
+    pub(crate) obj: ObjTy,
     ///Depending on the ObjTy, maps 1:1 into the OscBank's primary or modulator banks
     pub osc_slot: usize,
     children: Vec<Orbital>,
@@ -415,7 +423,19 @@ impl Orbital {
         }
     }
 
-    pub fn on_drag_end(&mut self) {
+    pub fn spawn_child(&mut self, osc_index: usize) {
+        let mut child = Orbital::new_primary(
+            self.center + Vec2::splat(Self::MIN_ORBIT),
+            self.obj_pos(),
+            osc_index,
+        );
+        child.radius = Self::MIN_ORBIT;
+        child.obj = self.obj.lower();
+        self.children.push(child);
+    }
+
+    ///Sends the end event down. Retruns a parent index if any new orbital was added.
+    pub fn on_drag_end(&mut self) -> Option<ParentIndex> {
         if !self.interaction.is_none() {
             match &self.interaction {
                 Interaction::DragNewChild { slot, obj, at } => {
@@ -424,7 +444,9 @@ impl Orbital {
                     child.radius = child.radius.clamp(Self::MIN_ORBIT, obj.max_orbit());
                     child.obj = *obj;
                     self.children.push(child);
+                    let retslot = *slot;
                     self.interaction = Interaction::None;
+                    return Some(ParentIndex::Modulator(retslot));
                 }
                 Interaction::DragOrbit { at: _ } => {
                     self.interaction = Interaction::None;
@@ -438,8 +460,13 @@ impl Orbital {
 
         //always pass release event down
         for c in &mut self.children {
-            c.on_drag_end();
+            let res = c.on_drag_end();
+            if res.is_some() {
+                return res;
+            }
         }
+
+        None
     }
 
     pub fn on_scroll(&mut self, delta: f32, at: Pos2) {
@@ -492,6 +519,20 @@ impl Orbital {
             let res = c.on_select(loc);
             if res.is_some() {
                 return res;
+            }
+        }
+
+        None
+    }
+
+    pub fn find_index_mut(&mut self, index: ParentIndex) -> Option<&mut Self> {
+        if self.is_me(index) {
+            return Some(self);
+        }
+        for c in &mut self.children {
+            let ret = c.find_index_mut(index);
+            if ret.is_some() {
+                return ret;
             }
         }
 
@@ -576,7 +617,7 @@ impl Orbital {
                 slot: self.osc_slot,
             });
         } else {
-            let volume = self.radius / (self.obj.max_orbit() - Self::MIN_ORBIT);
+            let volume = (self.radius - Self::MIN_ORBIT) / (self.obj.max_orbit() - Self::MIN_ORBIT);
 
             builder.primary_states.push(PrimaryState {
                 offset: self.phase,
