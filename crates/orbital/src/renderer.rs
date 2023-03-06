@@ -141,54 +141,10 @@ impl Renderer {
                     let mut dirty_flag = system.is_dirty;
                     let mut add_flag = system.is_add_child;
                     if let Some(orbital) = system.get_selected_orbital() {
-                        ui.add_space(7.5);
+                        const SLIDER_SIZE: Vec2 = Vec2::new(300.0, 25.0);
+                        ui.add_space(20.0);
                         ui.horizontal(|ui| {
-                            ui.vertical(|ui| {
-                                ui.label("Octaving");
-                                if ui
-                                    .add(
-                                        Slider::new(&mut orbital.speed_index, -20f32..=20f32)
-                                            .suffix(" va")
-                                            .step_by(1.0)
-                                            .clamp_to_range(false),
-                                    )
-                                    .changed()
-                                {
-                                    dirty_flag = true;
-                                };
-                            });
-
-                            ui.spacing();
-
-                            ui.vertical(|ui| {
-                                ui.label("Orbit");
-                                if ui
-                                    .add(Slider::new(
-                                        &mut orbital.radius,
-                                        orbital.obj.min_orbit()..=orbital.obj.max_orbit(),
-                                    ))
-                                    .changed()
-                                {
-                                    dirty_flag = true;
-                                };
-                            });
-
-                            ui.spacing();
-
-                            ui.vertical(|ui| {
-                                ui.label("Offset");
-                                let mut off = orbital.offset.to_degrees();
-                                if ui
-                                    .add(Slider::new(&mut off, 0f32..=360.0).suffix("°"))
-                                    .changed()
-                                {
-                                    orbital.offset = off.to_radians();
-                                    dirty_flag = true;
-                                };
-                            });
-
-                            ui.spacing();
-
+                            ui.add_space(50.0);
                             let add_child_painter = |painter: &Painter, resp: &mut Response| {
                                 let rect = painter.clip_rect();
                                 let parent_loc = rect.center();
@@ -210,6 +166,15 @@ impl Renderer {
                                         4.0,
                                         Color32::WHITE,
                                     );
+                                } else {
+                                    let mut local_stroke = stroke.clone();
+                                    local_stroke.color = Color32::GRAY;
+                                    painter.circle_stroke(parent_loc, 15.0, local_stroke);
+                                    painter.circle_filled(
+                                        parent_loc + Vec2::splat(10.0),
+                                        4.0,
+                                        Color32::GRAY,
+                                    );
                                 }
                             };
                             if ui
@@ -222,6 +187,61 @@ impl Renderer {
                                 add_flag = true;
                                 dirty_flag = true;
                             }
+
+                            ui.add_space(50.0);
+
+                            ui.vertical(|ui| {
+                                ui.label("Octaving");
+                                if ui
+                                    .add_sized(
+                                        SLIDER_SIZE,
+                                        Slider::new(&mut orbital.speed_index, -20f32..=20f32)
+                                            .suffix(" va")
+                                            .fixed_decimals(1)
+                                            .clamp_to_range(false),
+                                    )
+                                    .changed()
+                                {
+                                    dirty_flag = true;
+                                };
+                            });
+
+                            ui.spacing();
+
+                            ui.vertical(|ui| {
+                                ui.label("Orbit");
+                                if ui
+                                    .add_sized(
+                                        SLIDER_SIZE,
+                                        Slider::new(
+                                            &mut orbital.radius,
+                                            orbital.obj.min_orbit()..=orbital.obj.max_orbit(),
+                                        ),
+                                    )
+                                    .changed()
+                                {
+                                    dirty_flag = true;
+                                };
+                            });
+
+                            ui.spacing();
+
+                            ui.vertical(|ui| {
+                                ui.label("Offset");
+                                let mut off = orbital.offset.to_degrees();
+                                if ui
+                                    .add_sized(
+                                        SLIDER_SIZE,
+                                        Slider::new(&mut off, 0f32..=360.0).suffix("°"),
+                                    )
+                                    .changed()
+                                {
+                                    orbital.offset = off.to_radians();
+                                    dirty_flag = true;
+                                };
+                            });
+
+                            ui.add_space(50.0);
                         });
                     }
                     system.is_dirty = dirty_flag;
