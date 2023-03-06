@@ -118,7 +118,7 @@ impl SolarSystem {
         painter.add(Shape::Circle(CircleShape {
             center,
             radius: ObjTy::Sun.radius(),
-            fill: ObjTy::Sun.color(0), //TODO: Maybe animate based on currently played key?
+            fill: ObjTy::Sun.color(0.0), //TODO: Maybe animate based on currently played key?
             stroke: Stroke::none(),
         }));
 

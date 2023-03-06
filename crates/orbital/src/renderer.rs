@@ -147,8 +147,9 @@ impl Renderer {
                                 ui.label("Octaving");
                                 if ui
                                     .add(
-                                        Slider::new(&mut orbital.speed_index, -20..=20)
+                                        Slider::new(&mut orbital.speed_index, -20f32..=20f32)
                                             .suffix(" va")
+                                            .step_by(1.0)
                                             .clamp_to_range(false),
                                     )
                                     .changed()

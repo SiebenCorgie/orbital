@@ -19,13 +19,13 @@ pub struct ModulatorOsc {
     pub range: f32,
     ///Abstract speed of this modulator. Depending on the modulation type this is
     /// either the relative frequency modulation, or a certain frequency in mel.
-    pub speed_index: i32,
+    pub speed_index: f32,
 }
 
 impl ModulatorOsc {
     #[inline(always)]
     pub fn freq(&self, base_frequency: f32) -> f32 {
-        base_frequency * 2.0f32.powf(self.speed_index as f32)
+        base_frequency * 2.0f32.powf(self.speed_index)
     }
 }
 
@@ -35,7 +35,7 @@ impl Default for ModulatorOsc {
             parent_osc_slot: ParentIndex::Primary(0),
             is_on: false,
             range: 0.0,
-            speed_index: 0,
+            speed_index: 0.0,
         }
     }
 }

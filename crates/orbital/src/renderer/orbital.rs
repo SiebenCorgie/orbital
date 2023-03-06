@@ -47,7 +47,7 @@ pub enum ObjTy {
 
 impl ObjTy {
     ///Paints self.
-    pub(super) fn paint(&self, speed_index: i32, center: Pos2, highlight: bool, painter: &Painter) {
+    pub(super) fn paint(&self, speed_index: f32, center: Pos2, highlight: bool, painter: &Painter) {
         let mut shape = CircleShape {
             center,
             radius: self.radius(),
@@ -60,7 +60,7 @@ impl ObjTy {
         painter.add(Shape::Circle(shape));
     }
 
-    pub(super) fn color(&self, speed_index: i32) -> Color32 {
+    pub(super) fn color(&self, speed_index: f32) -> Color32 {
         //map into linear rang -20..20
         let alpha = ((speed_index as f64 + 20.0) / 40.0).clamp(0.0, 1.0);
 
@@ -179,8 +179,8 @@ pub struct Orbital {
 
     //current phase (in radiant) of this orbital.
     phase: f32,
-    //abstract orbital speed.
-    pub speed_index: i32,
+    //abstract orbital speed. reltavie octaving per unit.
+    pub speed_index: f32,
 
     //true whenever paint() should highlight
     planet_highlight: bool,
@@ -216,7 +216,7 @@ impl Orbital {
             planet_highlight: false,
 
             phase: 0.0,
-            speed_index: 0,
+            speed_index: 0.0,
 
             offset,
             obj: ObjTy::Planet,
@@ -434,7 +434,7 @@ impl Orbital {
         self.children.push(child);
     }
 
-    ///Sends the end event down. Retruns a parent index if any new orbital was added.
+    ///Sends the end event down. Returns a parent index if any new orbital was added.
     pub fn on_drag_end(&mut self) -> Option<ParentIndex> {
         if !self.interaction.is_none() {
             match &self.interaction {
@@ -472,9 +472,9 @@ impl Orbital {
     pub fn on_scroll(&mut self, delta: f32, at: Pos2) {
         if self.is_on_orbit_handle(at) {
             self.speed_index = if delta < 0.0 {
-                self.speed_index - 1
+                self.speed_index - 0.5
             } else {
-                self.speed_index + 1
+                self.speed_index + 0.5
             };
         }
         for c in &mut self.children {
