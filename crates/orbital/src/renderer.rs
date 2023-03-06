@@ -6,7 +6,7 @@ use crate::{
     OrbitalParams,
 };
 use crossbeam::channel::Sender;
-use egui::{Color32, Context, DragValue, Painter, Response, Slider, Stroke, Vec2};
+use egui::{Color32, Context, DragValue, Label, Painter, Response, Slider, Stroke, Vec2};
 use nih_plug::{nih_error, prelude::ParamSetter};
 use nih_plug_egui::egui::Sense;
 
@@ -137,90 +137,121 @@ impl Renderer {
             .min_height(50.0)
             .resizable(false)
             .show(eguictx, |ui| {
-
-                //Might have to show the help panel.
-                if self.show_help{
-                    ui.label("
-There are four main interactions. :
-    1.: Click somewhere to create a new orbital, right click an orbital to delete it.
-    2.: Select and drag an existing orbit to adjust the influence of the orbital on its parent.
-    3.: Drag out a sibling orbital from an existing one by clicking and dragging out the edge.
-    4.: Scroll while hovering over an object to adjust its relative or absolute speed depending on the selected mode on the top bar."
-                    );
-                }else{
-                    if let Ok(mut system) = self.params.solar_system.write() {
-                        let mut dirty_flag = system.is_dirty;
-                        let mut add_flag = system.is_add_child;
-                        if let Some(orbital) = system.get_selected_orbital() {
-                            ui.add_space(7.5);
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui|{
-                                    ui.label("Speed");
-                                    if ui.add(Slider::new(&mut orbital.speed_index, -20..=20).clamp_to_range(false)).changed(){
-                                        dirty_flag = true;
-                                    };
-                                });
-
-                                ui.spacing();
-
-                                ui.vertical(|ui|{
-                                    ui.label("Orbit");
-                                    if ui.add(Slider::new(&mut orbital.radius, orbital.obj.min_orbit()..=orbital.obj.max_orbit())).changed(){
-                                        dirty_flag = true;
-                                    };
-                                });
-
-
-                                ui.spacing();
-
-                                ui.vertical(|ui|{
-                                    ui.label("Offset");
-                                    let mut off = orbital.offset.to_degrees();
-                                    if ui.add(Slider::new(&mut off, 0f32..=360.0).suffix("°")).changed(){
-                                        orbital.offset = off.to_radians();
-                                        dirty_flag = true;
-                                    };
-                                });
-
-                                ui.spacing();
-
-                                let add_child_painter = |painter: &Painter, resp: &mut Response|{
-
-                                    let rect = painter.clip_rect();
-                                    let parent_loc = rect.center();
-                                    let parent_orbit_at = parent_loc - Vec2::splat(14.0);
-
-                                    let stroke = if resp.hovered(){
-                                        Stroke::new(2.0, Color32::WHITE)
-                                    }else{
-                                        Stroke::new(1.0, Color32::WHITE)
-                                    };
-
-                                    painter.circle_stroke(parent_orbit_at, 20.0, stroke);
-                                    painter.circle_filled(parent_loc, 4.0, Color32::WHITE);
-
-
-                                    if resp.hovered(){
-                                        painter.circle_stroke(parent_loc, 15.0, stroke);
-                                        painter.circle_filled(parent_loc + Vec2::splat(10.0), 4.0, Color32::WHITE);
-                                    }
-                                };
-                                if ui.add(PainterButton::new(&add_child_painter).with_size(Vec2::new(60.0, 40.0))).clicked(){
-                                    add_flag = true;
+                if let Ok(mut system) = self.params.solar_system.write() {
+                    let mut dirty_flag = system.is_dirty;
+                    let mut add_flag = system.is_add_child;
+                    if let Some(orbital) = system.get_selected_orbital() {
+                        ui.add_space(7.5);
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label("Octaving");
+                                if ui
+                                    .add(
+                                        Slider::new(&mut orbital.speed_index, -20..=20)
+                                            .suffix(" va")
+                                            .clamp_to_range(false),
+                                    )
+                                    .changed()
+                                {
                                     dirty_flag = true;
-                                }
+                                };
                             });
-                        }
-                        system.is_dirty = dirty_flag;
-                        system.is_add_child = add_flag;
-                    } else {
-                        nih_error!("Could not lock system for display!");
+
+                            ui.spacing();
+
+                            ui.vertical(|ui| {
+                                ui.label("Orbit");
+                                if ui
+                                    .add(Slider::new(
+                                        &mut orbital.radius,
+                                        orbital.obj.min_orbit()..=orbital.obj.max_orbit(),
+                                    ))
+                                    .changed()
+                                {
+                                    dirty_flag = true;
+                                };
+                            });
+
+                            ui.spacing();
+
+                            ui.vertical(|ui| {
+                                ui.label("Offset");
+                                let mut off = orbital.offset.to_degrees();
+                                if ui
+                                    .add(Slider::new(&mut off, 0f32..=360.0).suffix("°"))
+                                    .changed()
+                                {
+                                    orbital.offset = off.to_radians();
+                                    dirty_flag = true;
+                                };
+                            });
+
+                            ui.spacing();
+
+                            let add_child_painter = |painter: &Painter, resp: &mut Response| {
+                                let rect = painter.clip_rect();
+                                let parent_loc = rect.center();
+                                let parent_orbit_at = parent_loc - Vec2::splat(14.0);
+
+                                let stroke = if resp.hovered() {
+                                    Stroke::new(2.0, Color32::WHITE)
+                                } else {
+                                    Stroke::new(1.0, Color32::WHITE)
+                                };
+
+                                painter.circle_stroke(parent_orbit_at, 20.0, stroke);
+                                painter.circle_filled(parent_loc, 4.0, Color32::WHITE);
+
+                                if resp.hovered() {
+                                    painter.circle_stroke(parent_loc, 15.0, stroke);
+                                    painter.circle_filled(
+                                        parent_loc + Vec2::splat(10.0),
+                                        4.0,
+                                        Color32::WHITE,
+                                    );
+                                }
+                            };
+                            if ui
+                                .add(
+                                    PainterButton::new(&add_child_painter)
+                                        .with_size(Vec2::new(60.0, 40.0)),
+                                )
+                                .clicked()
+                            {
+                                add_flag = true;
+                                dirty_flag = true;
+                            }
+                        });
                     }
+                    system.is_dirty = dirty_flag;
+                    system.is_add_child = add_flag;
+                } else {
+                    nih_error!("Could not lock system for display!");
                 }
             });
+
+        if self.show_help {
+            let _ = egui::Window::new("Help").show(eguictx, |ui| {
+                ui.add(Label::new("
+1.: Add / Remove
+  1.1: Left-Click in empty space to create a new planet.
+  1.2: Right-Click planet to delete it.
+2. Changing orbital
+  2.1: Drag the planet's orbit to change its influence.
+  2.2: Scroll while hovering to change planet's speed / frequency.
+3. Drag the edge of a planet (or use the button on the lower panel) to add a orbiting sibling to a planet.
+
+All the modification can also be done by selecting a planet (left click), and dragging the appropriate slider.
+                "));
+
+                if ui.button("Close").clicked(){
+                    self.show_help = false;
+                }
+            });
+        }
         egui::CentralPanel::default().show(eguictx, |ui| {
             let mut rect = ui.clip_rect();
-            const RED: f32 = 85f32;
+            const RED: f32 = 65f32;
             rect.max.y -= RED;
             rect.min.y += RED;
             let (response, painter) = ui.allocate_painter(rect.size(), Sense::click_and_drag());
