@@ -30,7 +30,7 @@ impl Default for EnvelopeParams {
 ///
 ///
 /// A typical envelope lifetime. Note that you can set parts to 0 to remove them
-/// ```
+/// ```skip
 /// sampled value
 /// 1^
 ///  |          /--------\__

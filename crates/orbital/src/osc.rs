@@ -645,18 +645,19 @@ impl OscillatorBank {
 
         let delta_sec = (1.0 / sample_rate) as Time;
 
-        let num_voices = voices
-            .iter()
-            .fold(0, |f, v| if !v.state.is_off() { f + 1 } else { f });
-
         #[cfg(feature = "profile")]
-        puffin::profile_function!(format!(
-            "OSC-Bank[{} @ {}] process Max: {:.2}ms",
-            num_voices,
-            buffer.samples(),
-            (buffer.samples() as f64 * delta_sec) * 1000.0
-        ));
+        {
+            let num_voices = voices
+                .iter()
+                .fold(0, |f, v| if !v.state.is_off() { f + 1 } else { f });
 
+            puffin::profile_function!(format!(
+                "OSC-Bank[{} @ {}] process Max: {:.2}ms",
+                num_voices,
+                buffer.samples(),
+                (buffer.samples() as f64 * delta_sec) * 1000.0
+            ));
+        }
         let mut sample_time = buffer_time_start;
 
         for mut sample in buffer.iter_samples() {

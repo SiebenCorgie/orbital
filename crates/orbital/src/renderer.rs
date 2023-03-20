@@ -1,4 +1,4 @@
-use std::{f32::consts::PI, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use crate::{
     com::{ComMsg, GainType},
@@ -6,7 +6,7 @@ use crate::{
     OrbitalParams,
 };
 use crossbeam::channel::Sender;
-use egui::{Color32, Context, DragValue, Label, Painter, Response, Slider, Stroke, Vec2};
+use egui::{Color32, Context, Label, Painter, Response, Slider, Stroke, Vec2};
 use nih_plug::{nih_error, prelude::ParamSetter};
 use nih_plug_egui::egui::Sense;
 
@@ -15,7 +15,6 @@ use self::{
     modswitch::ModSwitch,
     painter_button::PainterButton,
     ppbutton::PPButton,
-    solar_system::SolarSystem,
     switch::Switch,
 };
 
@@ -53,7 +52,7 @@ impl Renderer {
             .map(|g| g.clone())
             .unwrap_or(GainType::default());
 
-        let tp = egui::TopBottomPanel::top("Toppanel")
+        let _tp = egui::TopBottomPanel::top("Toppanel")
             .max_height(50.0)
             .resizable(false)
             .min_height(10.0)
@@ -133,7 +132,7 @@ impl Renderer {
                 })
             });
 
-        let bt = egui::panel::TopBottomPanel::bottom("bottom_panel")
+        let _bt = egui::panel::TopBottomPanel::bottom("bottom_panel")
             .min_height(50.0)
             .resizable(false)
             .show(eguictx, |ui| {
