@@ -21,7 +21,7 @@ A cosmic, polyphonic, additive FM synthesizer.
 
 ## Getting the plugin
 
-There are two ways: Either you use the build instructions below, or you write me on one of the platforms mentioned on [siebencorgie.rs](https://siebencorgie.rs) and I'll try to send you a recent version when I have time.
+For every release, there are binary builds for Window, Linux and OSX (as VST3 and Clap plugins) available on the [release](https://github.com/SiebenCorgie/orbital/releases) page.
 
 ## Building 
 To build, install a [Rust toolchain and Cargo](https://www.rust-lang.org/). Make sure you are using the `nightly` toolchain.
